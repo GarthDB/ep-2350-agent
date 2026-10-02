@@ -100,6 +100,79 @@ struct SettingsHeaderPresentation: Equatable {
     }
 }
 
+struct ApplicationIdentityPresentation {
+    let bundleID: String
+    let name: String
+    let icon: NSImage?
+
+    @MainActor
+    init(bundleID: String) {
+        self.init(
+            bundleID: bundleID,
+            applicationURL: NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        )
+    }
+
+    @MainActor
+    init(bundleID: String, applicationURL: URL?) {
+        self.bundleID = bundleID
+        guard let applicationURL else {
+            name = bundleID
+            icon = nil
+            return
+        }
+
+        let bundle = Bundle(url: applicationURL)
+        name = Self.displayName(
+            bundleID: bundleID,
+            candidates: [
+                bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+                bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String,
+                applicationURL.deletingPathExtension().lastPathComponent
+            ]
+        )
+        icon = NSWorkspace.shared.icon(forFile: applicationURL.path)
+    }
+
+    var removalAccessibilityLabel: String {
+        "Remove \(name) from allowed apps"
+    }
+
+    static func displayName(bundleID: String, candidates: [String?]) -> String {
+        for candidate in candidates {
+            guard let name = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                continue
+            }
+            return name
+        }
+        return bundleID
+    }
+}
+
+private struct ApplicationIdentityView: View {
+    let identity: ApplicationIdentityPresentation
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let icon = identity.icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 18, height: 18)
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(identity.name)
+                if identity.name != identity.bundleID {
+                    Text(identity.bundleID)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+}
+
 struct SettingsView: View {
     let controller: AgentController
     @State private var draft = Configuration()
@@ -298,10 +371,12 @@ struct SettingsView: View {
                 .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Allowed output destinations (empty allows any app except EP-2350 Agent and MacWhisper)")
             ForEach(draft.allowedBundleIDs, id: \.self) { bundleID in
+                let identity = ApplicationIdentityPresentation(bundleID: bundleID)
                 HStack {
-                    Text(bundleID)
+                    ApplicationIdentityView(identity: identity)
                     Spacer()
                     Button("Remove") { draft.allowedBundleIDs.removeAll { $0 == bundleID } }
+                        .accessibilityLabel(identity.removalAccessibilityLabel)
                 }
             }
             Button("Add Application...") {
@@ -341,12 +416,14 @@ struct SettingsView: View {
             }
             if draft.outputMode == .fixedTarget {
                 if let target = draft.targetApplication {
-                    LabeledContent("Target application", value: target.name)
-                    Text(target.bundleID).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    let identity = ApplicationIdentityPresentation(bundleID: target.bundleID)
+                    LabeledContent("Target application") {
+                        ApplicationIdentityView(identity: identity)
+                    }
                     if !draft.allowedBundleIDs.isEmpty && !draft.allowedBundleIDs.contains(target.bundleID) {
                         Text("This target is not in Allowed apps. Add it before saving.")
                             .foregroundStyle(.red)
-                        Button("Allow \(target.name)") { draft.allowedBundleIDs.append(target.bundleID) }
+                        Button("Allow \(identity.name)") { draft.allowedBundleIDs.append(target.bundleID) }
                     }
                 } else {
                     Text("Choose the app that should receive all transcripts and keyboard actions.")
@@ -374,7 +451,6 @@ struct SettingsView: View {
             }
             Text("The Safety allowlist restricts output destinations in either mode. Tone Test never activates an app or sends output. Saving pauses listening and cancels pending output.")
                 .font(.callout).foregroundStyle(.secondary)
-            LabeledContent("Saved destination", value: controller.outputDestinationLabel)
         }
         .formStyle(.grouped)
     }
