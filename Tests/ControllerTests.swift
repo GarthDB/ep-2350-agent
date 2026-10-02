@@ -314,6 +314,69 @@ private actor FakeTranscriber: Transcribing {
     #expect(!reopened.canSave)
 }
 
+@Test @MainActor func settingsHeaderUsesSavedDestinationAndCurrentListeningState() throws {
+    let env = try TestEnvironment()
+    defer { env.cleanup() }
+    var draft = env.controller.configuration
+    draft.outputMode = .fixedTarget
+    draft.targetApplication = TargetApplication(bundleID: "com.mitchellh.ghostty", name: "Ghostty")
+
+    var header = SettingsHeaderPresentation(
+        status: env.controller.status,
+        destination: env.controller.outputDestinationLabel,
+        buttonTitle: env.controller.listeningButtonTitle
+    )
+    #expect(header.status == "Listening")
+    #expect(header.destination == "Output: Foreground app")
+    #expect(header.buttonTitle == "Pause Listening")
+    #expect(header.buttonAccessibilityLabel.contains("Current status: Listening"))
+    #expect(header.buttonAccessibilityLabel.contains("Active output destination: Output: Foreground app"))
+    #expect(draft != env.controller.configuration)
+    #expect(header.destination == env.controller.outputDestinationLabel)
+
+    env.controller.pause()
+    header = SettingsHeaderPresentation(
+        status: env.controller.status,
+        destination: env.controller.outputDestinationLabel,
+        buttonTitle: env.controller.listeningButtonTitle
+    )
+    #expect(header.status == "Paused")
+    #expect(header.buttonTitle == "Resume Listening")
+    #expect(header.destination == "Output: Foreground app")
+}
+
+@Test @MainActor func settingsHeaderReportsFixedAndToneTestDestinations() throws {
+    let fixed = try TestEnvironment(fixedTarget: true)
+    defer { fixed.cleanup() }
+    let fixedHeader = SettingsHeaderPresentation(
+        status: fixed.controller.status,
+        destination: fixed.controller.outputDestinationLabel,
+        buttonTitle: fixed.controller.listeningButtonTitle
+    )
+    #expect(fixedHeader.destination == "Output: Ghostty (fixed)")
+
+    let toneTest = try TestEnvironment(toneTestMode: true, macWhisperPath: "/missing-macwhisper")
+    defer { toneTest.cleanup() }
+    var testHeader = SettingsHeaderPresentation(
+        status: toneTest.controller.status,
+        destination: toneTest.controller.outputDestinationLabel,
+        buttonTitle: toneTest.controller.listeningButtonTitle
+    )
+    #expect(testHeader.status == "Tone test listening")
+    #expect(testHeader.destination == "Report only - no output")
+    #expect(testHeader.buttonTitle == "Pause Tone Test")
+    #expect(testHeader.buttonAccessibilityLabel.contains("Active output destination: Report only - no output"))
+
+    toneTest.controller.pause()
+    testHeader = SettingsHeaderPresentation(
+        status: toneTest.controller.status,
+        destination: toneTest.controller.outputDestinationLabel,
+        buttonTitle: toneTest.controller.listeningButtonTitle
+    )
+    #expect(testHeader.status == "Tone test paused")
+    #expect(testHeader.buttonTitle == "Resume Tone Test")
+}
+
 @Test @MainActor func transcriptDoesNotSubmit() async throws {
     let env = try TestEnvironment()
     defer { env.cleanup() }

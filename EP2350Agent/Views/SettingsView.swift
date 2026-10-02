@@ -90,6 +90,16 @@ struct SettingsSavePresentation: Equatable {
     }
 }
 
+struct SettingsHeaderPresentation: Equatable {
+    let status: String
+    let destination: String
+    let buttonTitle: String
+
+    var buttonAccessibilityLabel: String {
+        "\(buttonTitle). Current status: \(status). Active output destination: \(destination)."
+    }
+}
+
 struct SettingsView: View {
     let controller: AgentController
     @State private var draft = Configuration()
@@ -112,13 +122,32 @@ struct SettingsView: View {
         )
     }
 
+    var headerPresentation: SettingsHeaderPresentation {
+        SettingsHeaderPresentation(
+            status: controller.status,
+            destination: controller.outputDestinationLabel,
+            buttonTitle: controller.listeningButtonTitle
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("EP-2350 Agent", systemImage: "mic")
                     .font(.title2.bold())
                 Spacer()
-                Text(controller.status).foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(headerPresentation.status)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Current listening status: \(headerPresentation.status)")
+                    Text(headerPresentation.destination)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityLabel("Active output destination: \(headerPresentation.destination)")
+                    Button(headerPresentation.buttonTitle) { controller.toggle() }
+                        .accessibilityLabel(headerPresentation.buttonAccessibilityLabel)
+                }
             }
             TabView {
                 audioTab.tabItem { Label("Audio", systemImage: "waveform") }
@@ -180,7 +209,6 @@ struct SettingsView: View {
                 .accessibilityLabel("Input level")
             Text("The level meter runs while listening. Connect the microphone's analog line-out to a USB audio adapter; this app captures audio, not USB button events.")
                 .font(.callout).foregroundStyle(.secondary)
-            Button(controller.listeningButtonTitle) { controller.toggle() }
             Text("Voice starts with sound and ends after 800 ms of quiet. Utterances are limited to 30 seconds. Button tones are excluded.")
                 .font(.callout).foregroundStyle(.secondary)
         }
