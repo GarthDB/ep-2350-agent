@@ -1,0 +1,11 @@
+# Scout also respects .gitignore. Keep project code, tests, and documentation
+# searchable without indexing task databases or bundled agent skills.
+ignore:
+  - '.beads/**'
+  - '.agents/skills/**'
+  - '.claude/**'
+  - '.github/hooks/**'
+  - '**/CHANGELOG.md'
+  - '**/CHANGELOG*'
+  - '**/CHANGES.md'
+  - '**/HISTORY.md'
