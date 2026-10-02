@@ -96,19 +96,20 @@ The Settings **Setup** tab can reveal the same files inside the app bundle.
 The app never modifies the hardware disk itself. These fixed-pitch SAMPLE
 presets prevent handle-driven pitch modulation from smearing the cues.
 
-| Action slot | Tone-pack mode / sample slot | Frequency | Default |
-|---|---|---:|---|
-| 1 | A / 1 | 1500 Hz | Enter |
-| 2 | A / 2 | 2300 Hz | Escape |
-| 3 | A / 3 | 3100 Hz | Control-C |
-| 4 | A / 4 | 3900 Hz | Shift-Tab |
-| 5 | B / 1 | 2751 Hz | Up |
-| 6 | B / 2 | 4218 Hz | Down |
-| 7 | B / 3 | 5685 Hz | No action |
-| 8 | B / 4 | 7153 Hz | No action |
+| Sample | Global slot | Frequency | Default |
+|---|---:|---:|---|
+| A1 | 1 | 1500 Hz | Enter |
+| A2 | 2 | 2300 Hz | Escape |
+| A3 | 3 | 3100 Hz | Control-C |
+| A4 | 4 | 3900 Hz | Shift-Tab |
+| B1 | 5 | 2751 Hz | Up |
+| B2 | 6 | 4218 Hz | Down |
+| B3 | 7 | 5685 Hz | No action |
+| B4 | 8 | 7153 Hz | No action |
 
-In the upstream Ting setup, green selects a sample; white plays it. Orange selects mode A (no mode LED) or
-mode B (first mode LED). Mode B shifts the four samples up 10.5 semitones.
+In the upstream Ting setup, the green sample selector chooses A1-A4 or B1-B4 and the white play
+control triggers the selected sample. The orange mode selector sets A (no mode LED) or B (first
+mode LED). Mode B shifts the four samples up 10.5 semitones.
 Keyboard shortcuts, `yes`, `continue`, `/clear`, `/compact`, and custom
 text-plus-Enter macros are available in the **Actions** tab.
 
