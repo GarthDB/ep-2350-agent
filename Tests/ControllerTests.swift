@@ -244,6 +244,51 @@ private actor FakeTranscriber: Transcribing {
     #expect(env.controller.status == "Tone test listening")
 }
 
+@Test @MainActor func toneTestPresentationCoversEveryListeningState() throws {
+    let env = try TestEnvironment()
+    defer { env.cleanup() }
+    let view = ToneTestView(controller: env.controller, hasUnsavedSettings: false)
+
+    var presentation = view.presentation
+    #expect(presentation.state == .normalListening)
+    #expect(presentation.guidance.contains("Normal listening and output are active"))
+    #expect(presentation.meterLabel == "Normal listening input level")
+    #expect(presentation.emptyResultsMessage.contains("not monitoring test tones"))
+    #expect(!presentation.guidance.contains("report-only"))
+    #expect(presentation.startButtonTitle == "Start Tone Test")
+
+    env.controller.pause()
+    presentation = view.presentation
+    #expect(presentation.state == .normalPaused)
+    #expect(presentation.guidance.contains("Normal listening is paused"))
+    #expect(presentation.meterLabel == nil)
+    #expect(presentation.idleMeterMessage?.contains("normal listening is paused") == true)
+
+    env.controller.setToneTestMode(true)
+    env.controller.startCapture()
+    presentation = view.presentation
+    #expect(presentation.state == .testing)
+    #expect(presentation.guidance.contains("report-only"))
+    #expect(presentation.guidance.contains("No keyboard actions"))
+    #expect(presentation.meterLabel == "Tone Test input level")
+    #expect(presentation.emptyResultsMessage.contains("Play a sample"))
+    #expect(presentation.startButtonTitle == "Stop Tone Test")
+
+    env.controller.pause()
+    presentation = view.presentation
+    #expect(presentation.state == .testPaused)
+    #expect(presentation.guidance.contains("Normal listening remains paused"))
+    #expect(!presentation.guidance.contains("report-only"))
+    #expect(presentation.meterLabel == nil)
+    #expect(presentation.idleMeterMessage?.contains("Tone Test is paused") == true)
+    #expect(presentation.emptyResultsMessage.contains("Resume Tone Test"))
+    #expect(presentation.startButtonTitle == "Resume Tone Test")
+
+    env.controller.setToneTestMode(false)
+    #expect(view.presentation.state == .normalPaused)
+    #expect(!env.controller.enabled)
+}
+
 @Test @MainActor func enteringToneTestCancelsQueuedOutputAndRejectsStaleCallbacks() async throws {
     let env = try TestEnvironment(delay: .seconds(1))
     defer { env.cleanup() }
