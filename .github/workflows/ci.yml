@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+
+      - name: Verify Xcode version
+        run: |
+          xcodebuild -version
+          test "$(xcodebuild -version | awk '/^Xcode / { print $2 }')" = "16.4"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Verify generated Xcode project is current
+        run: |
+          xcodegen generate
+          git diff --exit-code -- EP2350Agent.xcodeproj
+
+      - name: Test EP2350Core
+        run: swift test --package-path Packages/EP2350Core
+
+      - name: Test hosted app
+        run: |
+          xcodebuild -project EP2350Agent.xcodeproj -scheme EP2350Agent \
+            -destination 'platform=macOS' -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO test

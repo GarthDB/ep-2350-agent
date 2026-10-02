@@ -254,6 +254,14 @@ MacWhisper model, or permission to record/type. Physical hardware, real MacWhisp
 transcription, and actual cross-app keyboard delivery still need a manual check
 on the user's configured system.
 
+GitHub Actions runs these tests for pull requests and pushes to `main` on a
+`macos-15` runner with Xcode 16.4. The workflow also regenerates the checked-in
+Xcode project with XcodeGen and fails if the generated project differs from
+`project.yml`. CI does not sign or publish the app and needs no secrets, EP-2350
+hardware, MacWhisper installation/model, microphone access, or Accessibility
+permission. Hardware behavior, real transcription, microphone permission, and
+cross-app keyboard delivery remain manual acceptance checks.
+
 This MVP does not include login startup, alternate STT backends, transcript
 history, automated microphone disk installation, or direct coding-agent APIs. The app
 is intentionally not App Sandbox enabled because it invokes the external CLI
