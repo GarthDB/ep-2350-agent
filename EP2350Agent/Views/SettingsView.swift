@@ -75,14 +75,18 @@ struct SettingsSavePresentation: Equatable {
     var message: String {
         switch state {
         case .unsavedChanges:
-            "Unsaved changes. Saving pauses capture and cancels pending output."
+            "Unsaved changes. Saving pauses listening and cancels pending output."
         case .repairRequired:
             "Settings need repair. Save to replace the invalid settings file."
         case .savedListening:
             "Settings saved. Listening."
         case .savedPaused:
-            "Settings saved. Paused. Resume listening to apply."
+            "Settings saved. Paused. Resume listening to use these settings."
         }
+    }
+
+    var changeTimingMessage: String {
+        "Tab edits are staged until Save Settings. Pause/resume, permission requests, and Tone Test controls act immediately."
     }
 
     var canSave: Bool {
@@ -237,8 +241,12 @@ struct SettingsView: View {
                     .accessibilityLabel("Error: \(message)")
             }
             HStack {
-                Text(presentation.message)
-                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(presentation.changeTimingMessage)
+                    Text(presentation.message)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Spacer()
                 Button("Save Settings") {
                     do {
@@ -280,10 +288,11 @@ struct SettingsView: View {
             }
             ProgressView(value: controller.level)
                 .accessibilityLabel("Input level")
-            Text("The level meter runs while listening. Connect the microphone's analog line-out to a USB audio adapter; this app captures audio, not USB button events.")
-                .font(.callout).foregroundStyle(.secondary)
-            Text("Voice starts with sound and ends after 800 ms of quiet. Utterances are limited to 30 seconds. Button tones are excluded.")
-                .font(.callout).foregroundStyle(.secondary)
+            Text("The level meter runs while listening. Connect the microphone's analog line-out to a USB audio adapter; the app processes audio, not USB button events.")
+                .foregroundStyle(.secondary)
+            DisclosureGroup("Voice detection details") {
+                Text("Voice starts with sound and ends after 800 ms of quiet. Utterances are limited to 30 seconds, and button tones are excluded.")
+            }
         }
         .formStyle(.grouped)
     }
@@ -300,10 +309,14 @@ struct SettingsView: View {
             }
             TextField("Model override", text: $draft.model, prompt: Text("MacWhisper's current model"))
             TextField("Language override", text: $draft.language, prompt: Text("MacWhisper's current language"))
-            Text("Leave model and language blank to use MacWhisper's selections. A model override uses engine:model-id; language uses an ISO code such as en, or auto.")
-                .font(.callout).foregroundStyle(.secondary)
-            Text("Install/download models in MacWhisper. This app does not change its settings or add transcriptions to its history. MacWhisper controls whether its selected engine is local or cloud-based.")
-                .font(.callout).foregroundStyle(.secondary)
+            Text("Leave overrides blank to use MacWhisper's selected model and language.")
+                .foregroundStyle(.secondary)
+            DisclosureGroup("Model, language, and privacy details") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("A model override uses engine:model-id. Language uses an ISO code such as en, or auto.")
+                    Text("Install or download models in MacWhisper. This app does not change its settings or add transcriptions to its history. MacWhisper controls whether its selected engine is local or cloud-based.")
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -367,9 +380,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            Text("If a rebuilt app still appears untrusted, remove its old entry in System Settings > Privacy & Security > Accessibility, then add the app currently running here: \(Bundle.main.bundleURL.path)")
-                .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-            Text("Allowed output destinations (empty allows any app except EP-2350 Agent and MacWhisper)")
+            Text("Allowed output destinations")
             ForEach(draft.allowedBundleIDs, id: \.self) { bundleID in
                 let identity = ApplicationIdentityPresentation(bundleID: bundleID)
                 HStack {
@@ -389,8 +400,15 @@ struct SettingsView: View {
                     } else { error = "The selected app has no bundle identifier." }
                 }
             }
-            Text("Speech is inserted without Enter. Foreground mode requires unchanged focus throughout capture and transcription. Fixed-target mode activates the selected app before output. In both modes, switching away during insertion stops remaining output, even if you switch back. Transcripts stay in memory until cleared or quit.")
-                .font(.callout).foregroundStyle(.secondary)
+            Text("Allowed apps restrict output in both modes. An empty list allows any app except EP-2350 Agent and MacWhisper. Tone Test never activates an app or sends output.")
+                .foregroundStyle(.secondary)
+            DisclosureGroup("Permission and delivery details") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("If a rebuilt app still appears untrusted, remove its old entry in System Settings > Privacy & Security > Accessibility, then add the app currently running here: \(Bundle.main.bundleURL.path)")
+                        .textSelection(.enabled)
+                    Text("Switching away during insertion stops remaining output, even if you switch back. Transcripts stay in memory until cleared or quit.")
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -444,13 +462,18 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("The target must already be running. It is activated when a transcript is ready or before a keyboard action, not when speech starts. You can work in another app while dictating or transcribing.")
-                Text("Output goes to the target's most recently active window, tab, and pane. No specific terminal session is selected, no app is launched, and focus is not restored afterward. Activation failure blocks output; transcripts remain available to copy.")
+                Text("The target must already be running. Output uses its most recently active window, tab, and pane. After activation, focus stays with the target; it is not returned to the app you left.")
+                DisclosureGroup("Fixed-target delivery details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("The target activates when a transcript is ready or before a keyboard action, not when speech starts. You can work in another app while dictating or transcribing. No specific terminal session is selected.")
+                        Text("Activation failure blocks output; transcripts remain available to copy.")
+                    }
+                }
             } else {
-                Text("Output goes to the app focused when speech began, only if it remains focused throughout capture and transcription. Keyboard actions use the app focused when their tone was detected.")
+                Text("Foreground mode sends speech only if the app focused when speech began stays focused through capture and transcription. Keyboard actions go to the app focused when their tone was detected.")
             }
-            Text("The Safety allowlist restricts output destinations in either mode. Tone Test never activates an app or sends output. Saving pauses listening and cancels pending output.")
-                .font(.callout).foregroundStyle(.secondary)
+            Text("Dictated speech inserts text without submitting or pressing Enter. Explicit Enter, Shift-Enter, Send, and Custom text + Enter actions can press Enter.")
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }
@@ -459,17 +482,21 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("EP-2350 tone configuration").font(.headline)
-                Text("The bundled tone pack comes from the upstream Ting setup, not the microphone's factory samples. MicFx compatibility has not yet been tested on hardware; verify its configuration format before replacing files.")
-                Text("Upstream Ting procedure:\n1. Back up the existing configuration and samples.\n2. Connect over USB-C and power it on so TINGDISK mounts.\n3. Copy config.json and 1.wav through 4.wav from the bundled TingConfig folder to the root of TINGDISK.\n4. Restart the microphone; configuration is read only at boot.\n5. Connect the analog line-out to your USB audio adapter for normal use.")
                 Button("Show EP-2350 Tone Files") {
                     if let url = Bundle.main.url(forResource: "TingConfig", withExtension: nil) {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     } else { error = "Bundled EP-2350 tone configuration files are missing." }
                 }
-                Text("Keep backups of your existing device files. Fixed-pitch SAMPLE presets are required for reliable cues. Mode A uses the four original tones; mode B pitches them up 10.5 semitones.")
-                Text("This app uses analog microphone audio and sample tones. It infers voice boundaries from audio levels, not USB button or handle events.")
-                Text("Independent project, not affiliated with Teenage Engineering. Inspired by tajchert/tink-agent (MIT).")
-                    .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Device setup and technical details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("The bundled tone pack comes from the upstream Ting setup, not the microphone's factory samples. MicFx compatibility has not yet been tested on hardware; verify its configuration format before replacing files.")
+                        Text("Upstream Ting procedure:\n1. Back up the existing configuration and samples.\n2. Connect over USB-C and power it on so TINGDISK mounts.\n3. Copy config.json and 1.wav through 4.wav from the bundled TingConfig folder to the root of TINGDISK.\n4. Restart the microphone; configuration is read only at boot.\n5. Connect the analog line-out to your USB audio adapter for normal use.")
+                        Text("Keep backups of your existing device files. Fixed-pitch SAMPLE presets are required for reliable cues. Mode A uses the four original tones; mode B pitches them up 10.5 semitones.")
+                        Text("This app uses analog microphone audio and sample tones. It infers voice boundaries from audio levels, not USB button or handle events.")
+                        Text("Independent project, not affiliated with Teenage Engineering. Inspired by tajchert/tink-agent (MIT).")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             .padding()
         }
