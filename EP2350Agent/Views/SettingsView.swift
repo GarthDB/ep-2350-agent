@@ -241,13 +241,14 @@ struct SettingsView: View {
                 Text("Green selects a slot; white fires it. Orange selects mode A or B.")
                     .foregroundStyle(.secondary)
                 ForEach(0..<8, id: \.self) { index in
+                    let sample = PhysicalSample(globalSlot: index + 1)
                     if index == 0 || index == 4 {
                         Text(index == 0 ? "Mode A - no mode LED" : "Mode B - first mode LED")
                             .font(.headline).padding(.top, 8)
                     }
                     HStack {
-                        Text("Slot \(index % 4 + 1)")
-                        Text("\(Int(AudioConstants.frequencies[index])) Hz")
+                        Text(sample.label)
+                        Text("Global slot \(index + 1) | \(Int(AudioConstants.frequencies[index])) Hz")
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         Spacer()
                         Picker("Action \(index + 1)", selection: $draft.slots[index].action) {
@@ -255,7 +256,9 @@ struct SettingsView: View {
                                 Text(action.label).tag(action)
                             }
                         }
-                        .labelsHidden().frame(width: 230)
+                        .labelsHidden()
+                        .accessibilityLabel(sample.accessibilityLabel)
+                        .frame(width: 230)
                     }
                     if draft.slots[index].action == .custom {
                         TextField("Text for action \(index + 1)", text: $draft.slots[index].text)

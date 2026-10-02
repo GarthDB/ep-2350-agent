@@ -474,8 +474,12 @@ private actor FakeTranscriber: Transcribing {
     #expect(event.frequency == Int(AudioConstants.frequencies[slot - 1]))
     #expect(event.mode == (slot <= 4 ? "A" : "B"))
     #expect(event.sampleSlot == (slot - 1) % 4 + 1)
+    let expectedLabels = ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4"]
+    #expect(event.sampleLabel == expectedLabels[slot - 1])
+    #expect(event.sample.accessibilityLabel == "Mode \(event.mode), sample \(event.sampleSlot), action")
     #expect(event.mapping == env.controller.configuration.slots[slot - 1])
-    #expect(event.summary.contains(event.mapping.action.label))
+    #expect(event.summary == "\(expectedLabels[slot - 1]) - \(event.mapping.action.label)")
+    #expect(event.details == "Global slot \(slot), \(event.frequency) Hz")
     #expect(env.keyboard.mappings.isEmpty)
     #expect(env.keyboard.texts.isEmpty)
     #expect(await env.transcriber.calls == 0)

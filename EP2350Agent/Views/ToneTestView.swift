@@ -136,7 +136,7 @@ struct ToneTestView: View {
                                     Text(event.timestamp, style: .time)
                                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 }
-                                Text("Mode \(event.mode), sample \(event.sampleSlot)")
+                                Text(event.details)
                                     .font(.caption).foregroundStyle(.secondary)
                                 if event.mapping.action == .custom {
                                     Text(event.mapping.text)
