@@ -166,11 +166,13 @@ private struct ApplicationIdentityView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(identity.name)
+                    .fixedSize(horizontal: false, vertical: true)
                 if identity.name != identity.bundleID {
                     Text(identity.bundleID)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -239,6 +241,7 @@ struct SettingsView: View {
             if let message = error ?? controller.lastError {
                 Text(message).foregroundStyle(.red).textSelection(.enabled)
                     .accessibilityLabel("Error: \(message)")
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -247,6 +250,7 @@ struct SettingsView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Button("Save Settings") {
                     do {
@@ -261,7 +265,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 660, height: 580)
+        .frame(minWidth: 640, minHeight: 480)
         .onAppear {
             controller.refreshDevices()
             controller.refreshPermissions()
