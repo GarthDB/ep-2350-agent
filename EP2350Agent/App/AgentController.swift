@@ -31,6 +31,7 @@ private final class FocusSnapshot: @unchecked Sendable {
 @Observable
 final class AgentController {
     private(set) var configuration: Configuration
+    private(set) var configurationNeedsRepair = false
     private(set) var devices: [AudioInputDevice] = []
     private(set) var enabled = false
     private(set) var capturing = false
@@ -55,7 +56,6 @@ final class AgentController {
     @ObservationIgnored private let frontmost: @MainActor () -> AppIdentity?
     @ObservationIgnored private let accessibility: @MainActor () -> Bool
     @ObservationIgnored private let deviceInputs: @MainActor () throws -> [AudioInputDevice]
-    @ObservationIgnored private var configurationValid = true
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var focusRevision: UInt64 = 0
     @ObservationIgnored private var utteranceTicket: DeliveryTicket?
@@ -104,7 +104,7 @@ final class AgentController {
         do { configuration = try store.load() }
         catch {
             configuration = Configuration()
-            configurationValid = false
+            configurationNeedsRepair = true
             lastError = "Settings could not be loaded. Review and explicitly save Settings to replace the invalid file. \(error.localizedDescription)"
         }
         accessibilityGranted = accessibility()
@@ -169,7 +169,7 @@ final class AgentController {
                let usb = devices.first(where: { $0.name.localizedCaseInsensitiveContains("USB Audio Device") }) {
                 var candidate = configuration
                 candidate.deviceUID = usb.id
-                if configurationValid {
+                if !configurationNeedsRepair {
                     try store.save(candidate)
                     configuration = candidate
                 }
@@ -183,6 +183,7 @@ final class AgentController {
     }
 
     func save(_ candidate: Configuration) throws {
+        guard candidate != configuration || configurationNeedsRepair else { return }
         if candidate.outputMode == .fixedTarget,
            let target = candidate.targetApplication, exclusions.contains(target.bundleID) {
             throw ConfigurationError.invalid("EP-2350 Agent and MacWhisper cannot be output targets.")
@@ -190,7 +191,7 @@ final class AgentController {
         try store.save(candidate)
         pause()
         configuration = candidate
-        configurationValid = true
+        configurationNeedsRepair = false
         lastError = nil
         notice = "Settings saved. Resume listening to use them."
     }
@@ -238,7 +239,7 @@ final class AgentController {
     }
 
     func startCapture() {
-        guard configurationValid else { return }
+        guard !configurationNeedsRepair else { return }
         guard let device = devices.first(where: { $0.id == configuration.deviceUID }) else {
             lastError = "Select an available audio input in Settings. The app never falls back to another microphone."
             return

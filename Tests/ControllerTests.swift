@@ -135,6 +135,101 @@ private actor FakeTranscriber: Transcribing {
     try #require(condition())
 }
 
+@Test @MainActor func unchangedSaveDoesNotPauseListening() throws {
+    let env = try TestEnvironment()
+    defer { env.cleanup() }
+    let stops = env.audio.stops
+
+    try env.controller.save(env.controller.configuration)
+
+    #expect(env.controller.enabled)
+    #expect(env.audio.stops == stops)
+}
+
+@Test @MainActor func invalidStoredConfigurationCanBeRepairedWithoutEdits() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ConfigurationStore(url: directory.appendingPathComponent("settings.json"))
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try Data("invalid settings".utf8).write(to: store.url)
+    let controller = AgentController(
+        store: store,
+        audio: FakeAudio(),
+        transcriber: FakeTranscriber(delay: .zero),
+        keyboard: FakeKeyboard(),
+        deviceInputs: { [] },
+        observeWorkspace: false
+    )
+
+    #expect(controller.configurationNeedsRepair)
+    let repair = SettingsSavePresentation(
+        draft: controller.configuration,
+        savedConfiguration: controller.configuration,
+        isListening: controller.enabled,
+        needsRepair: controller.configurationNeedsRepair
+    )
+    #expect(repair.state == .repairRequired)
+    #expect(repair.canSave)
+
+    try controller.save(controller.configuration)
+
+    #expect(!controller.configurationNeedsRepair)
+    #expect(try store.load() == controller.configuration)
+}
+
+@Test @MainActor func settingsSavePresentationTracksEditSaveResumeAndReopen() throws {
+    let env = try TestEnvironment()
+    defer { env.cleanup() }
+    let saved = env.controller.configuration
+    let listening = SettingsSavePresentation(
+        draft: saved,
+        savedConfiguration: saved,
+        isListening: env.controller.enabled,
+        needsRepair: env.controller.configurationNeedsRepair
+    )
+    #expect(listening.state == .savedListening)
+    #expect(!listening.canSave)
+
+    var edited = saved
+    edited.model = "engine:model"
+    let unsaved = SettingsSavePresentation(
+        draft: edited,
+        savedConfiguration: saved,
+        isListening: env.controller.enabled,
+        needsRepair: env.controller.configurationNeedsRepair
+    )
+    #expect(unsaved.state == .unsavedChanges)
+    #expect(unsaved.canSave)
+
+    try env.controller.save(edited)
+    let paused = SettingsSavePresentation(
+        draft: edited,
+        savedConfiguration: env.controller.configuration,
+        isListening: env.controller.enabled,
+        needsRepair: env.controller.configurationNeedsRepair
+    )
+    #expect(paused.state == .savedPaused)
+    #expect(!env.controller.enabled)
+
+    env.controller.startCapture()
+    let resumed = SettingsSavePresentation(
+        draft: edited,
+        savedConfiguration: env.controller.configuration,
+        isListening: env.controller.enabled,
+        needsRepair: env.controller.configurationNeedsRepair
+    )
+    #expect(resumed.state == .savedListening)
+
+    let reopened = SettingsSavePresentation(
+        draft: env.controller.configuration,
+        savedConfiguration: env.controller.configuration,
+        isListening: env.controller.enabled,
+        needsRepair: env.controller.configurationNeedsRepair
+    )
+    #expect(reopened.state == .savedListening)
+    #expect(!reopened.canSave)
+}
+
 @Test @MainActor func transcriptDoesNotSubmit() async throws {
     let env = try TestEnvironment()
     defer { env.cleanup() }
@@ -574,10 +669,13 @@ private actor FakeTranscriber: Transcribing {
     let env = try TestEnvironment(fixedTarget: true)
     defer { env.cleanup() }
     let original = env.controller.configuration
+    let stops = env.audio.stops
     var invalid = original
     invalid.allowedBundleIDs = ["com.apple.TextEdit"]
     #expect(throws: ConfigurationError.self) { try env.controller.save(invalid) }
     #expect(env.controller.configuration == original)
+    #expect(env.controller.enabled)
+    #expect(env.audio.stops == stops)
     #expect(env.activationRequests.isEmpty)
 }
 
