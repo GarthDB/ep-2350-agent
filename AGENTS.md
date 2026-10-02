@@ -1,5 +1,13 @@
 # Agent Instructions
 
+## Bead Closure Policy
+
+Keep implementation beads open (or in progress) after the code and tests are
+complete. Close a bead only after its associated pull request has been created
+and merged. An open or draft pull request is not sufficient; if work is
+finished but the pull request has not merged, leave the bead open and report
+that status at handoff.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database
