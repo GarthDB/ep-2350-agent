@@ -56,6 +56,28 @@ xcodegen generate
 XcodeGen is a development tool, not an app dependency. The checked-in project
 allows building without installing it.
 
+### Scout code search
+
+Scout is an optional development tool, not an app or CI dependency. With the
+Scout CLI installed, attach this checkout to index Swift code, tests, and
+project documentation:
+
+```sh
+scout attach .
+scout ensure-fresh .
+scout search "tone detection" --limit 5
+```
+
+Repository search exclusions are checked in at `.scout/scout.config.yaml`.
+Scout respects `.gitignore`, stores its index under `~/.scout`, and watches
+the checkout for changes. Attaching also installs local Copilot hooks; if
+Scout's MCP tools are not already registered, run `scout setup --mcp-target copilot`.
+
+Inference uses your machine's Scout settings. A configured embedding server
+receives indexed code chunks, queries, and reranking snippets. For local-only
+inference, select `scout admin embedding set bundled` and restart the Scout
+daemon before attaching; this changes the machine-wide Scout setting.
+
 ## Set up the EP-2350 tone pack
 
 The procedure below is the upstream **Ting** procedure, not a hardware-verified
