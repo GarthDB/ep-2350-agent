@@ -4,12 +4,58 @@ import Combine
 import SwiftUI
 import EP2350Core
 
+struct SettingsSavePresentation: Equatable {
+    enum State: Equatable {
+        case unsavedChanges
+        case repairRequired
+        case savedListening
+        case savedPaused
+    }
+
+    let state: State
+
+    init(draft: Configuration, savedConfiguration: Configuration, isListening: Bool, needsRepair: Bool) {
+        if draft != savedConfiguration {
+            state = .unsavedChanges
+        } else if needsRepair {
+            state = .repairRequired
+        } else {
+            state = isListening ? .savedListening : .savedPaused
+        }
+    }
+
+    var message: String {
+        switch state {
+        case .unsavedChanges:
+            "Unsaved changes. Saving pauses capture and cancels pending output."
+        case .repairRequired:
+            "Settings need repair. Save to replace the invalid settings file."
+        case .savedListening:
+            "Settings saved. Listening."
+        case .savedPaused:
+            "Settings saved. Paused. Resume listening to apply."
+        }
+    }
+
+    var canSave: Bool {
+        state == .unsavedChanges || state == .repairRequired
+    }
+}
+
 struct SettingsView: View {
     let controller: AgentController
     @State private var draft = Configuration()
     @State private var error: String?
-    @State private var saved = false
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    var presentation: SettingsSavePresentation {
+        SettingsSavePresentation(
+            draft: draft,
+            savedConfiguration: controller.configuration,
+            isListening: controller.enabled,
+            needsRepair: controller.configurationNeedsRepair
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,20 +80,19 @@ struct SettingsView: View {
                     .accessibilityLabel("Error: \(message)")
             }
             HStack {
-                Text(saved ? "Saved. Resume listening to apply." : "Saving pauses capture and cancels pending output.")
+                Text(presentation.message)
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Save Settings") {
                     do {
                         try controller.save(draft)
                         error = nil
-                        saved = true
                     } catch {
                         self.error = error.localizedDescription
-                        saved = false
                     }
                 }
                 .keyboardShortcut("s", modifiers: .command)
+                .disabled(!presentation.canSave)
             }
         }
         .padding(20)
@@ -56,8 +101,8 @@ struct SettingsView: View {
             controller.refreshDevices()
             controller.refreshPermissions()
             draft = controller.configuration
+            error = nil
         }
-        .onChange(of: draft) { _, _ in saved = false }
         .onReceive(refresh) { _ in
             controller.refreshDevices()
             controller.refreshPermissions()
