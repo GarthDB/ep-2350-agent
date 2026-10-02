@@ -1,0 +1,63 @@
+name: EP2350Agent
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+packages:
+  EP2350Core:
+    path: Packages/EP2350Core
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  EP2350Agent:
+    type: application
+    platform: macOS
+    sources:
+      - path: EP2350Agent
+        excludes:
+          - Resources
+      - path: EP2350Agent/Resources/TingConfig
+        type: folder
+        buildPhase: resources
+      - path: EP2350Agent/Resources/ThirdPartyNotices.txt
+        buildPhase: resources
+    dependencies:
+      - package: EP2350Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.garthdb.TinkAgent
+        PRODUCT_NAME: EP-2350 Agent
+        PRODUCT_MODULE_NAME: EP2350Agent
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: EP-2350 Agent
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: EP-2350 Agent listens to your selected audio input to detect EP-2350 sample tones and transcribe speech with MacWhisper.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+  EP2350AgentTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: EP2350Agent
+      - package: EP2350Core
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.garthdb.TinkAgentTests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/EP-2350 Agent.app/Contents/MacOS/EP-2350 Agent"
+schemes:
+  EP2350Agent:
+    build:
+      targets:
+        EP2350Agent: all
+        EP2350AgentTests: [test]
+    test:
+      targets:
+        - EP2350AgentTests
