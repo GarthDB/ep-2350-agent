@@ -4,6 +4,54 @@ import Combine
 import SwiftUI
 import EP2350Core
 
+struct PermissionControlsPresentation: Equatable {
+    enum MicrophoneAction: Equatable {
+        case request, openSettings, none
+    }
+
+    enum AccessibilityAction: Equatable {
+        case request, openSettings
+    }
+
+    let microphoneStatus: String
+    let microphoneButtonTitle: String
+    let microphoneAction: MicrophoneAction
+    let accessibilityStatus: String
+    let accessibilityButtonTitle: String
+    let accessibilityAction: AccessibilityAction
+
+    init(microphoneStatus: AVAuthorizationStatus, accessibilityGranted: Bool) {
+        switch microphoneStatus {
+        case .authorized:
+            self.microphoneStatus = "Granted"
+            microphoneButtonTitle = "Microphone Access Granted"
+            microphoneAction = .none
+        case .notDetermined:
+            self.microphoneStatus = "Not requested"
+            microphoneButtonTitle = "Request Microphone Access"
+            microphoneAction = .request
+        case .denied:
+            self.microphoneStatus = "Denied"
+            microphoneButtonTitle = "Open Microphone Settings"
+            microphoneAction = .openSettings
+        case .restricted:
+            self.microphoneStatus = "Restricted"
+            microphoneButtonTitle = "Microphone Access Restricted"
+            microphoneAction = .none
+        @unknown default:
+            self.microphoneStatus = "Unavailable"
+            microphoneButtonTitle = "Microphone Access Unavailable"
+            microphoneAction = .none
+        }
+
+        self.accessibilityStatus = accessibilityGranted ? "Granted" : "Not granted"
+        accessibilityButtonTitle = accessibilityGranted
+            ? "Open Accessibility Settings"
+            : "Grant Accessibility"
+        accessibilityAction = accessibilityGranted ? .openSettings : .request
+    }
+}
+
 struct SettingsSavePresentation: Equatable {
     enum State: Equatable {
         case unsavedChanges
@@ -54,6 +102,13 @@ struct SettingsView: View {
             savedConfiguration: controller.configuration,
             isListening: controller.enabled,
             needsRepair: controller.configurationNeedsRepair
+        )
+    }
+
+    private var permissionControls: PermissionControlsPresentation {
+        PermissionControlsPresentation(
+            microphoneStatus: controller.microphoneStatus,
+            accessibilityGranted: controller.accessibilityGranted
         )
     }
 
@@ -185,18 +240,31 @@ struct SettingsView: View {
 
     private var safetyTab: some View {
         Form {
-            LabeledContent("Microphone", value: controller.microphoneStatus == .authorized ? "Granted" : "Required")
-            LabeledContent("Accessibility", value: controller.accessibilityGranted ? "Granted" : "Required")
+            LabeledContent("Microphone", value: permissionControls.microphoneStatus)
+            LabeledContent("Accessibility", value: permissionControls.accessibilityStatus)
             HStack {
-                Button("Grant Microphone") { controller.toggle() }
-                    .disabled(controller.microphoneStatus == .authorized)
-                Button("Grant Accessibility") { ActionRouter.requestAccessibility() }
-                Button("Privacy Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
-                        NSWorkspace.shared.open(url)
+                Button(permissionControls.microphoneButtonTitle) {
+                    switch permissionControls.microphoneAction {
+                    case .request:
+                        controller.requestMicrophonePermission()
+                    case .openSettings:
+                        openPrivacySettings("Microphone")
+                    case .none:
+                        break
+                    }
+                }
+                .disabled(permissionControls.microphoneAction == .none)
+                Button(permissionControls.accessibilityButtonTitle) {
+                    switch permissionControls.accessibilityAction {
+                    case .request:
+                        ActionRouter.requestAccessibility()
+                    case .openSettings:
+                        openPrivacySettings("Accessibility")
                     }
                 }
             }
+            Text("If a rebuilt app still appears untrusted, remove its old entry in System Settings > Privacy & Security > Accessibility, then add the app currently running here: \(Bundle.main.bundleURL.path)")
+                .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Allowed output destinations (empty allows any app except EP-2350 Agent and MacWhisper)")
             ForEach(draft.allowedBundleIDs, id: \.self) { bundleID in
                 HStack {
@@ -219,6 +287,18 @@ struct SettingsView: View {
                 .font(.callout).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+    }
+
+    private func openPrivacySettings(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_\(pane)") else {
+            error = "Could not open System Settings. Open Privacy & Security > \(pane) manually."
+            return
+        }
+        guard NSWorkspace.shared.open(url) else {
+            error = "Could not open System Settings. Open Privacy & Security > \(pane) manually."
+            return
+        }
+        error = nil
     }
 
     private var outputTab: some View {

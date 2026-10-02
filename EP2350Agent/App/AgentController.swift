@@ -55,6 +55,8 @@ final class AgentController {
     @ObservationIgnored private let activator: any ApplicationActivating
     @ObservationIgnored private let frontmost: @MainActor () -> AppIdentity?
     @ObservationIgnored private let accessibility: @MainActor () -> Bool
+    @ObservationIgnored private let microphoneStatusProvider: @MainActor () -> AVAuthorizationStatus
+    @ObservationIgnored private let microphoneAccessRequester: @MainActor () async -> Bool
     @ObservationIgnored private let deviceInputs: @MainActor () throws -> [AudioInputDevice]
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var focusRevision: UInt64 = 0
@@ -90,6 +92,12 @@ final class AgentController {
         activator: any ApplicationActivating = ApplicationActivator(),
         frontmost: @escaping @MainActor () -> AppIdentity? = AgentController.currentApp,
         accessibility: @escaping @MainActor () -> Bool = { ActionRouter.accessibilityGranted },
+        microphoneStatusProvider: @escaping @MainActor () -> AVAuthorizationStatus = {
+            AVCaptureDevice.authorizationStatus(for: .audio)
+        },
+        microphoneAccessRequester: @escaping @MainActor () async -> Bool = {
+            await AVCaptureDevice.requestAccess(for: .audio)
+        },
         deviceInputs: @escaping @MainActor () throws -> [AudioInputDevice] = { try AudioDeviceService.inputs() },
         observeWorkspace: Bool = true
     ) {
@@ -100,6 +108,8 @@ final class AgentController {
         self.activator = activator
         self.frontmost = frontmost
         self.accessibility = accessibility
+        self.microphoneStatusProvider = microphoneStatusProvider
+        self.microphoneAccessRequester = microphoneAccessRequester
         self.deviceInputs = deviceInputs
         do { configuration = try store.load() }
         catch {
@@ -107,6 +117,7 @@ final class AgentController {
             configurationNeedsRepair = true
             lastError = "Settings could not be loaded. Review and explicitly save Settings to replace the invalid file. \(error.localizedDescription)"
         }
+        microphoneStatus = microphoneStatusProvider()
         accessibilityGranted = accessibility()
         if observeWorkspace {
             let center = NSWorkspace.shared.notificationCenter
@@ -155,7 +166,7 @@ final class AgentController {
     }
 
     func refreshPermissions() {
-        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        microphoneStatus = microphoneStatusProvider()
         accessibilityGranted = accessibility()
         if enabled && microphoneStatus != .authorized {
             failCapture("Microphone permission was revoked. Enable it in System Settings.")
@@ -201,19 +212,45 @@ final class AgentController {
         permissionTask = Task { [weak self] in
             guard let self else { return }
             let session = self.generation
-            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-                _ = await AVCaptureDevice.requestAccess(for: .audio)
-            }
+            let authorized = await self.requestMicrophoneAuthorization()
             guard !Task.isCancelled, session == self.generation else { return }
             self.permissionTask = nil
-            self.refreshPermissions()
-            guard self.microphoneStatus == .authorized else {
-                self.lastError = "Microphone access is required. Enable EP-2350 Agent in System Settings > Privacy & Security > Microphone."
+            guard authorized else {
+                self.lastError = Self.microphonePermissionError
                 return
             }
             self.refreshDevices()
             self.startCapture()
         }
+    }
+
+    func requestMicrophonePermission() {
+        refreshPermissions()
+        guard microphoneStatus != .authorized, permissionTask == nil else { return }
+        permissionTask = Task { [weak self] in
+            guard let self else { return }
+            let session = self.generation
+            let authorized = await self.requestMicrophoneAuthorization()
+            guard !Task.isCancelled, session == self.generation else { return }
+            self.permissionTask = nil
+            if authorized {
+                self.lastError = nil
+                self.notice = "Microphone access granted. Resume listening when ready."
+            } else {
+                self.lastError = Self.microphonePermissionError
+            }
+        }
+    }
+
+    private static let microphonePermissionError =
+        "Microphone access was not granted. Enable EP-2350 Agent in System Settings > Privacy & Security > Microphone."
+
+    private func requestMicrophoneAuthorization() async -> Bool {
+        if microphoneStatusProvider() == .notDetermined {
+            _ = await microphoneAccessRequester()
+        }
+        refreshPermissions()
+        return microphoneStatus == .authorized
     }
 
     func setToneTestMode(_ active: Bool) {

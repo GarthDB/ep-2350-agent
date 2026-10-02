@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Testing
 import EP2350Core
 @testable import EP2350Agent
@@ -59,6 +60,9 @@ private actor FakeTranscriber: Transcribing {
     let transcriber: FakeTranscriber
     var current: AppIdentity? = AppIdentity(processID: 12, bundleID: "com.apple.Terminal")
     var permission = true
+    var microphoneAuthorizationStatus: AVAuthorizationStatus = .authorized
+    var microphoneRequestSucceeds = true
+    var microphoneRequests = 0
     var connected = true
     var targetProcess: AppIdentity? = AppIdentity(processID: 99, bundleID: "com.mitchellh.ghostty")
     var activationRequests: [AppIdentity] = []
@@ -68,8 +72,12 @@ private actor FakeTranscriber: Transcribing {
     var controller: AgentController!
 
     init(delay: Duration = .milliseconds(20), toneTestMode: Bool = false,
-         macWhisperPath: String = "/usr/bin/true", fixedTarget: Bool = false) throws {
+         macWhisperPath: String = "/usr/bin/true", fixedTarget: Bool = false,
+         initiallyListening: Bool = true, microphoneStatus: AVAuthorizationStatus = .authorized,
+         microphoneRequestSucceeds: Bool = true) throws {
         transcriber = FakeTranscriber(delay: delay)
+        microphoneAuthorizationStatus = microphoneStatus
+        self.microphoneRequestSucceeds = microphoneRequestSucceeds
         let store = ConfigurationStore(url: directory.appendingPathComponent("settings.json"))
         var config = Configuration()
         config.deviceUID = device.id
@@ -102,12 +110,18 @@ private actor FakeTranscriber: Transcribing {
             store: store, audio: audio, transcriber: transcriber, keyboard: keyboard,
             activator: activator,
             frontmost: { [unowned self] in self.current }, accessibility: { [unowned self] in self.permission },
+            microphoneStatusProvider: { [unowned self] in self.microphoneAuthorizationStatus },
+            microphoneAccessRequester: { [unowned self] in
+                self.microphoneRequests += 1
+                self.microphoneAuthorizationStatus = self.microphoneRequestSucceeds ? .authorized : .denied
+                return self.microphoneRequestSucceeds
+            },
             deviceInputs: { [unowned self] in self.connected ? [self.device] : [] }, observeWorkspace: false
         )
         controller.refreshDevices()
         controller.setToneTestMode(toneTestMode)
-        controller.startCapture()
-        guard controller.enabled else {
+        if initiallyListening { controller.startCapture() }
+        guard !initiallyListening || controller.enabled else {
             throw ConfigurationError.invalid(controller.lastError ?? "Mock capture did not start.")
         }
     }
@@ -175,6 +189,76 @@ private actor FakeTranscriber: Transcribing {
 
     #expect(!controller.configurationNeedsRepair)
     #expect(try store.load() == controller.configuration)
+}
+
+@Test @MainActor func permissionOnlyMicrophoneRequestDoesNotStartListening() async throws {
+    let env = try TestEnvironment(initiallyListening: false, microphoneStatus: .notDetermined)
+    defer { env.cleanup() }
+
+    env.controller.requestMicrophonePermission()
+    try await Task.sleep(for: .milliseconds(20))
+
+    #expect(env.microphoneRequests == 1)
+    #expect(env.controller.microphoneStatus == .authorized)
+    #expect(!env.controller.enabled)
+    #expect(env.audio.starts == 0)
+    #expect(env.keyboard.startedOutputs == 0)
+    #expect(env.controller.notice?.contains("Resume listening") == true)
+
+    env.controller.toggle()
+    try await Task.sleep(for: .milliseconds(20))
+    #expect(env.controller.enabled)
+    #expect(env.audio.starts == 1)
+}
+
+@Test @MainActor func deniedMicrophonePermissionRequestIsVisible() async throws {
+    let env = try TestEnvironment(
+        initiallyListening: false,
+        microphoneStatus: .notDetermined,
+        microphoneRequestSucceeds: false
+    )
+    defer { env.cleanup() }
+
+    env.controller.requestMicrophonePermission()
+    try await Task.sleep(for: .milliseconds(20))
+
+    #expect(env.controller.microphoneStatus == .denied)
+    #expect(env.controller.lastError?.contains("Microphone access was not granted") == true)
+    #expect(!env.controller.enabled)
+    #expect(env.audio.starts == 0)
+    #expect(env.keyboard.startedOutputs == 0)
+}
+
+@Test @MainActor func permissionControlsTrackExternalGrantChanges() throws {
+    let env = try TestEnvironment(initiallyListening: false, microphoneStatus: .denied)
+    defer { env.cleanup() }
+
+    env.permission = false
+    env.controller.refreshPermissions()
+    let denied = PermissionControlsPresentation(
+        microphoneStatus: env.controller.microphoneStatus,
+        accessibilityGranted: env.controller.accessibilityGranted
+    )
+    #expect(denied.microphoneStatus == "Denied")
+    #expect(denied.microphoneButtonTitle == "Open Microphone Settings")
+    #expect(denied.microphoneAction == .openSettings)
+    #expect(denied.accessibilityStatus == "Not granted")
+    #expect(denied.accessibilityButtonTitle == "Grant Accessibility")
+    #expect(denied.accessibilityAction == .request)
+
+    env.microphoneAuthorizationStatus = .authorized
+    env.permission = true
+    env.controller.refreshPermissions()
+    let granted = PermissionControlsPresentation(
+        microphoneStatus: env.controller.microphoneStatus,
+        accessibilityGranted: env.controller.accessibilityGranted
+    )
+    #expect(granted.microphoneStatus == "Granted")
+    #expect(granted.microphoneButtonTitle == "Microphone Access Granted")
+    #expect(granted.microphoneAction == .none)
+    #expect(granted.accessibilityStatus == "Granted")
+    #expect(granted.accessibilityButtonTitle == "Open Accessibility Settings")
+    #expect(granted.accessibilityAction == .openSettings)
 }
 
 @Test @MainActor func settingsSavePresentationTracksEditSaveResumeAndReopen() throws {
