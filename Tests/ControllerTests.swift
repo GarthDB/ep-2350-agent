@@ -377,6 +377,24 @@ private actor FakeTranscriber: Transcribing {
     #expect(testHeader.buttonTitle == "Resume Tone Test")
 }
 
+@Test @MainActor func applicationIdentityPresentationUsesFriendlyNameAndBundleIDFallback() {
+    let bundleID = "com.example.uninstalled"
+    let unavailable = ApplicationIdentityPresentation(bundleID: bundleID, applicationURL: nil)
+    #expect(unavailable.bundleID == bundleID)
+    #expect(unavailable.name == bundleID)
+    #expect(unavailable.icon == nil)
+    #expect(unavailable.removalAccessibilityLabel == "Remove \(bundleID) from allowed apps")
+
+    #expect(ApplicationIdentityPresentation.displayName(
+        bundleID: "com.mitchellh.ghostty",
+        candidates: ["  ", "Ghostty", "Other Name"]
+    ) == "Ghostty")
+    #expect(ApplicationIdentityPresentation.displayName(
+        bundleID: bundleID,
+        candidates: [nil, " \n "]
+    ) == bundleID)
+}
+
 @Test @MainActor func transcriptDoesNotSubmit() async throws {
     let env = try TestEnvironment()
     defer { env.cleanup() }
