@@ -3,7 +3,7 @@ import SwiftUI
 
 struct AgentMenu: View {
     let controller: AgentController
-    @Environment(\.openSettings) private var openSettings
+    let openSettings: () -> Void
     var body: some View {
         Text("EP-2350 Agent - \(controller.status)")
         Text(controller.selectedDeviceName)
@@ -29,7 +29,6 @@ struct AgentMenu: View {
         Divider()
         Button("Settings...") {
             openSettings()
-            NSApplication.shared.activate(ignoringOtherApps: true)
         }
         .keyboardShortcut(",", modifiers: .command)
         Button("Quit EP-2350 Agent") {
