@@ -23,6 +23,7 @@
 		7E0302FA13E8535161F31C9D /* AudioServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77BEFD7DA89B7290201B8359 /* AudioServicesTests.swift */; };
 		851D196E6814C20E817935A0 /* AppBuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64447B4811C590907BD4D554 /* AppBuildInfo.swift */; };
 		8E3773BF21A1408423D560D4 /* AgentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA37571ECFE26AB931EA96CE /* AgentController.swift */; };
+		93B3846067B89C6CFF4568DC /* SettingsLayoutFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF0B9446F64447B3E2E7398 /* SettingsLayoutFixture.swift */; };
 		9480390FF3800F9738A5A93D /* AudioResampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF064DDE2264688753D8B6A /* AudioResampler.swift */; };
 		96F77AF96765E83BE66CF7E7 /* TingConfig in Resources */ = {isa = PBXBuildFile; fileRef = 927C10A86D96C8743187F228 /* TingConfig */; };
 		9DB369EBCFC7C9E6A75D5287 /* ApplicationActivator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B28C4C665A72445F38D025 /* ApplicationActivator.swift */; };
@@ -47,6 +48,7 @@
 /* Begin PBXFileReference section */
 		0406B6D074FA05E08073D928 /* AppBuildInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBuildInfoTests.swift; sourceTree = "<group>"; };
 		09AAA603EEEAFCE4004C2EAF /* AudioDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDeviceService.swift; sourceTree = "<group>"; };
+		0FF0B9446F64447B3E2E7398 /* SettingsLayoutFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsLayoutFixture.swift; sourceTree = "<group>"; };
 		27A3A8A44BAAEDC132F5984E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2E323539B49366A1E09AEDC6 /* ToneTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToneTestView.swift; sourceTree = "<group>"; };
 		2FD694E8D16119B0719FB6D9 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
@@ -115,6 +117,14 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		311A116587BBBD86EC86B188 /* Debug */ = {
+			isa = PBXGroup;
+			children = (
+				0FF0B9446F64447B3E2E7398 /* SettingsLayoutFixture.swift */,
+			);
+			path = Debug;
+			sourceTree = "<group>";
+		};
 		3D8E2A8CF574B85DAB7FE692 = {
 			isa = PBXGroup;
 			children = (
@@ -138,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				E2D61B4F4954C4E60C2E5F02 /* App */,
+				311A116587BBBD86EC86B188 /* Debug */,
 				3FDA1EB79F62ED9EA6731B67 /* Resources */,
 				25CD5C15D9B894C19AFB8F66 /* Services */,
 				D35944D76339F942C350D7DA /* Views */,
@@ -313,6 +324,7 @@
 				9480390FF3800F9738A5A93D /* AudioResampler.swift in Sources */,
 				4F6ECE90E47BBB033033BD95 /* EP2350AgentApp.swift in Sources */,
 				A0E866C9109848C29D9CE79D /* MacWhisperTranscriber.swift in Sources */,
+				93B3846067B89C6CFF4568DC /* SettingsLayoutFixture.swift in Sources */,
 				3C96662470647D816917B282 /* SettingsView.swift in Sources */,
 				2AA57E44CDA7E3C4BB259B66 /* SettingsWindowController.swift in Sources */,
 				DE42A7F074DDF33A299B3D1C /* ToneTestEvent.swift in Sources */,

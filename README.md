@@ -58,6 +58,26 @@ xcodegen generate
 XcodeGen is a development tool, not an app dependency. The checked-in project
 allows building without installing it.
 
+### Settings layout fixture
+
+Debug builds include `SettingsLayoutFixture`, invoked explicitly from Xcode's
+paused debugger; normal startup never enables it. In LLDB, run:
+
+```text
+expr -l objc++ -- (void)((id (*)(id, SEL, BOOL))objc_msgSend)((id)NSClassFromString(@"SettingsLayoutFixture"), (SEL)NSSelectorFromString(@"presentExpanded:"), YES)
+continue
+```
+
+This opens a 640x480 Settings window with enlarged text, long synthetic input
+and destination identities, and a temporary configuration separate from real
+settings. Pause the debugger to invoke `showError:` with `YES`, or use
+`performSelector:(SEL)NSSelectorFromString(@"accumulateHistory")` on the same
+class to populate report-only tone history. Resume before inspecting or scrolling
+the UI. The fixture cannot transcribe, activate an output target, or send keys.
+Invoke its `close` selector before stopping the app to remove its temporary
+configuration. Static-copy pseudo-localization is a separate acceptance fixture,
+not enabled by this helper.
+
 ### Scout code search
 
 Scout is an optional development tool, not an app or CI dependency. With the
