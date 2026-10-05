@@ -184,6 +184,7 @@ struct SettingsView: View {
     @State private var draft = Configuration()
     @State private var error: String?
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    private let buildInfo = AppBuildInfo.current
 
     var presentation: SettingsSavePresentation {
         SettingsSavePresentation(
@@ -247,6 +248,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(presentation.changeTimingMessage)
                     Text(presentation.message)
+                    Text(buildInfo.label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -265,7 +270,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 640, minHeight: 480)
+        .frame(minWidth: 640, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
         .onAppear {
             controller.refreshDevices()
             controller.refreshPermissions()

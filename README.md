@@ -31,6 +31,8 @@ button-event connection. Handle state is inferred from audio, not read digitally
 Open `EP2350Agent.xcodeproj`, select the **EP2350Agent** scheme and **My Mac**, choose
 your signing team if required, and run. The microphone icon appears in the menu
 bar; there is no Dock icon or main window. Choose **Settings...** from the menu.
+Settings opens a single resizable window; drag an edge or corner to resize it.
+Closing Settings leaves the menu-bar agent running, and reopening reuses the window.
 The app starts paused and does not ask for microphone access until you resume.
 
 Command-line build:
