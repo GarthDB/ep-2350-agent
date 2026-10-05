@@ -240,9 +240,7 @@ struct SettingsView: View {
                 setupTab.tabItem { Label("Setup", systemImage: "cable.connector") }
             }
             if let message = error ?? controller.lastError {
-                Text(message).foregroundStyle(.red).textSelection(.enabled)
-                    .accessibilityLabel("Error: \(message)")
-                    .fixedSize(horizontal: false, vertical: true)
+                SettingsErrorView(message: message)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -509,5 +507,29 @@ struct SettingsView: View {
             }
             .padding()
         }
+    }
+}
+
+struct SettingsErrorView: View {
+    let message: String
+
+    private var messageText: some View {
+        Text(message)
+            .foregroundStyle(.red)
+            .textSelection(.enabled)
+            .accessibilityLabel("Error: \(message)")
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            messageText
+            ScrollView {
+                messageText
+            }
+            .frame(height: 80)
+        }
+        .frame(maxHeight: 80, alignment: .topLeading)
     }
 }

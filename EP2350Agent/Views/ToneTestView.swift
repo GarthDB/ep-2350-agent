@@ -88,16 +88,27 @@ struct ToneTestView: View {
     }
 
     var body: some View {
+        ScrollView {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(presentation.title)
                 .font(.headline)
             Text(presentation.guidance)
                 .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if hasUnsavedSettings {
                 Text("Save Settings first to test your edited input or mappings.")
                     .foregroundStyle(.orange)
             }
-            LabeledContent("Saved input", value: controller.selectedDeviceName)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Saved input")
+                Text(controller.selectedDeviceName)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let meterLabel = presentation.meterLabel {
                 ProgressView(value: controller.level)
                     .accessibilityLabel(meterLabel)
@@ -105,52 +116,104 @@ struct ToneTestView: View {
                 Text(idleMeterMessage)
                     .font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
-                Button(presentation.startButtonTitle) {
-                    controller.toggleToneTest()
-                }
-                if controller.toneTestMode {
-                    Button("Exit Tone Test") { controller.setToneTestMode(false) }
-                }
-                Spacer()
-                Button("Clear Results") { controller.clearToneTestEvents() }
-                    .disabled(controller.toneTestEvents.isEmpty)
-            }
+            ToneTestControlsView(
+                startTitle: presentation.startButtonTitle,
+                isTesting: controller.toneTestMode,
+                canClear: !controller.toneTestEvents.isEmpty,
+                toggle: { controller.toggleToneTest() },
+                exit: { controller.setToneTestMode(false) },
+                clear: { controller.clearToneTestEvents() }
+            )
             if controller.toneTestMode {
                 Text("Play each sample in modes A and B. Frequency is the matched detector frequency, not a separate frequency measurement.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Divider()
             if controller.toneTestEvents.isEmpty {
-                Text(presentation.emptyResultsMessage)
-                    .foregroundStyle(.secondary)
-                Spacer()
+                ToneTestEmptyResultsView(message: presentation.emptyResultsMessage)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(controller.toneTestEvents) { event in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(event.summary).font(.headline)
-                                    Spacer()
-                                    Text(event.timestamp, style: .time)
-                                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                                }
-                                Text(event.details)
-                                    .font(.caption).foregroundStyle(.secondary)
-                                if event.mapping.action == .custom {
-                                    Text(event.mapping.text)
-                                        .font(.body.monospaced()).textSelection(.enabled)
-                                }
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(controller.toneTestEvents) { event in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(event.summary).font(.headline)
+                                Spacer()
+                                Text(event.timestamp, style: .time)
+                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                            Text(event.details)
+                                .font(.caption).foregroundStyle(.secondary)
+                            if event.mapping.action == .custom {
+                                Text(event.mapping.text)
+                                    .font(.body.monospaced()).textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             Text("Most recent \(AgentController.toneTestEventLimit) detections, newest first. Results stay only in memory.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct ToneTestControlsView: View {
+    let startTitle: String
+    let isTesting: Bool
+    let canClear: Bool
+    var exitTitle: LocalizedStringKey = "Exit Tone Test"
+    var clearTitle: LocalizedStringKey = "Clear Results"
+    let toggle: () -> Void
+    let exit: () -> Void
+    let clear: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                startButton
+                if isTesting { exitButton }
+                Spacer()
+                clearButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 8) {
+                startButton
+                if isTesting { exitButton }
+                clearButton
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var startButton: some View {
+        Button(action: toggle) {
+            Text(startTitle).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var exitButton: some View {
+        Button(action: exit) {
+            Text(exitTitle).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var clearButton: some View {
+        Button(action: clear) {
+            Text(clearTitle).fixedSize(horizontal: false, vertical: true)
+        }
+        .disabled(!canClear)
+    }
+}
+
+struct ToneTestEmptyResultsView: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
