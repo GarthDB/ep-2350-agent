@@ -106,6 +106,7 @@ import EP2350Core
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     window.contentView = host
     defer { window.close() }
     controller.refreshDevices()
@@ -171,6 +172,7 @@ import EP2350Core
         backing: .buffered,
         defer: false
     )
+    window.isReleasedWhenClosed = false
     window.contentView = host
     defer { window.close() }
     host.layoutSubtreeIfNeeded()
