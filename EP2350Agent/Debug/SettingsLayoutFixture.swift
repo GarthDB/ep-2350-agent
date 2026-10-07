@@ -4,7 +4,7 @@ import AVFoundation
 import SwiftUI
 import EP2350Core
 
-/// Invoked explicitly from LLDB; never used by normal application startup.
+/// Enabled only by explicit Debug fixture launch arguments or debugger invocation.
 @MainActor
 @objc(SettingsLayoutFixture)
 final class SettingsLayoutFixture: NSObject {
@@ -21,6 +21,7 @@ final class SettingsLayoutFixture: NSObject {
     private let initialDraft: Configuration?
 
     private init(expanded: Bool, scenario: String) throws {
+        let activity = SettingsLayoutActivity(rawValue: scenario)
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EP2350-layout-\(UUID().uuidString)")
         let store = ConfigurationStore(url: directory.appendingPathComponent("settings.json"))
@@ -59,8 +60,14 @@ final class SettingsLayoutFixture: NSObject {
         let audio = self.audio
         let inputs = self.inputs
         let permissions = self.permissions
+        let transcriber: any Transcribing
+        if activity != nil {
+            transcriber = SettingsLayoutHeldTranscriber()
+        } else {
+            transcriber = FixtureTranscriber()
+        }
         controller = AgentController(
-            store: store, audio: audio, transcriber: FixtureTranscriber(),
+            store: store, audio: audio, transcriber: transcriber,
             keyboard: FixtureKeyboard(),
             activator: ApplicationActivator(
                 running: { _ in [] }, isRunning: { _ in false }, frontmost: { nil },
@@ -83,6 +90,9 @@ final class SettingsLayoutFixture: NSObject {
             controller.setToneTestMode(true)
         default:
             break
+        }
+        if activity != nil {
+            controller.startCapture()
         }
         host = SettingsWindowController(controller: controller)
         super.init()
@@ -129,6 +139,9 @@ final class SettingsLayoutFixture: NSObject {
                 : NSSize(width: 640, height: 480)
             fixture.host.window?.setContentSize(size)
             if scenario == "tone-history" { accumulateHistory() }
+            if let activity = SettingsLayoutActivity(rawValue: scenario) {
+                fixture.audio.emit(activity)
+            }
             return "Isolated fixture window \(fixture.host.window?.windowNumber ?? -1); \(fixture.directory.path)"
         } catch {
             removeInterpolationTableIfOwned()
@@ -291,6 +304,42 @@ final class SettingsLayoutFixture: NSObject {
     }
 }
 
+enum SettingsLayoutActivity: String, CaseIterable, Sendable {
+    case capturingVoice = "capture-active"
+    case transcribing = "transcription-active"
+    case capturingAndTranscribing = "capture-transcription-active"
+    case queuedOne = "transcription-queued-one"
+    case queuedTwo = "transcription-queued-two"
+
+    private var completedUtterances: Int {
+        switch self {
+        case .capturingVoice: 0
+        case .transcribing, .capturingAndTranscribing: 1
+        case .queuedOne: 2
+        case .queuedTwo: 3
+        }
+    }
+
+    func emit(to onBlock: @Sendable ([Float]) -> Void) {
+        let voice = Array(repeating: Float(0.05), count: AudioConstants.blockSize)
+        let silence = Array(repeating: Float(0), count: AudioConstants.blockSize)
+        for _ in 0..<completedUtterances {
+            for _ in 0..<8 { onBlock(voice) }
+            for _ in 0..<16 { onBlock(silence) }
+        }
+        if self == .capturingVoice || self == .capturingAndTranscribing {
+            for _ in 0..<8 { onBlock(voice) }
+        }
+    }
+}
+
+struct SettingsLayoutHeldTranscriber: Transcribing {
+    func transcribe(_ samples: [Float], configuration: Configuration) async throws -> String {
+        try await Task.sleep(for: .seconds(86_400))
+        throw ConfigurationError.invalid("Layout fixture transcription hold expired; no output was produced.")
+    }
+}
+
 @MainActor
 private final class FixturePermissions {
     let microphoneStatus: AVAuthorizationStatus
@@ -335,6 +384,13 @@ private final class FixtureAudio: AudioCapturing {
         self.onBlock = onBlock
     }
     func stop() { onBlock = nil }
+    func emit(_ activity: SettingsLayoutActivity) {
+        guard let onBlock else {
+            print("Layout fixture activity failed: synthetic audio is not listening.")
+            return
+        }
+        activity.emit(to: onBlock)
+    }
     func tone(slot: Int) {
         for _ in 0..<6 { onBlock?(Array(repeating: 0, count: 800)) }
         let frequency = AudioConstants.frequencies[slot - 1]

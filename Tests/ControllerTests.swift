@@ -74,7 +74,7 @@ private actor FakeTranscriber: Transcribing {
     init(delay: Duration = .milliseconds(20), toneTestMode: Bool = false,
          macWhisperPath: String = "/usr/bin/true", fixedTarget: Bool = false,
          initiallyListening: Bool = true, microphoneStatus: AVAuthorizationStatus = .authorized,
-         microphoneRequestSucceeds: Bool = true) throws {
+         microphoneRequestSucceeds: Bool = true, transcriberOverride: (any Transcribing)? = nil) throws {
         transcriber = FakeTranscriber(delay: delay)
         microphoneAuthorizationStatus = microphoneStatus
         self.microphoneRequestSucceeds = microphoneRequestSucceeds
@@ -107,7 +107,7 @@ private actor FakeTranscriber: Transcribing {
             timeout: .milliseconds(250), pollInterval: .milliseconds(5)
         )
         controller = AgentController(
-            store: store, audio: audio, transcriber: transcriber, keyboard: keyboard,
+            store: store, audio: audio, transcriber: transcriberOverride ?? transcriber, keyboard: keyboard,
             activator: activator,
             frontmost: { [unowned self] in self.current }, accessibility: { [unowned self] in self.permission },
             microphoneStatusProvider: { [unowned self] in self.microphoneAuthorizationStatus },
@@ -344,6 +344,64 @@ private actor FakeTranscriber: Transcribing {
     #expect(header.buttonTitle == "Resume Listening")
     #expect(header.destination == "Output: Foreground app")
 }
+
+#if DEBUG
+@Test(arguments: SettingsLayoutActivity.allCases)
+@MainActor func layoutActivityProducesStableStatusWithoutOutput(_ activity: SettingsLayoutActivity) async throws {
+    let env = try TestEnvironment(transcriberOverride: SettingsLayoutHeldTranscriber())
+    defer { env.cleanup() }
+    let configuration = env.controller.configuration
+    let onBlock = try #require(env.audio.onBlock)
+    let expected: (status: String, capturing: Bool, transcribing: Bool, queued: Int)
+    switch activity {
+    case .capturingVoice: expected = ("Capturing voice", true, false, 0)
+    case .transcribing: expected = ("Transcribing", false, true, 0)
+    case .capturingAndTranscribing: expected = ("Capturing / transcribing", true, true, 0)
+    case .queuedOne: expected = ("Transcribing (1 queued)", false, true, 1)
+    case .queuedTwo: expected = ("Transcribing (2 queued)", false, true, 2)
+    }
+
+    activity.emit(to: onBlock)
+    try await waitUntil { env.controller.status == expected.status }
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(env.controller.status == expected.status)
+    #expect(env.controller.capturing == expected.capturing)
+    #expect(env.controller.transcribing == expected.transcribing)
+    #expect(env.controller.pendingCount == expected.queued)
+    #expect(env.controller.lastError == nil)
+    #expect(env.controller.lastTranscript.isEmpty)
+    #expect(env.controller.lastAction.isEmpty)
+    #expect(env.controller.configuration == configuration)
+    #expect(env.keyboard.startedOutputs == 0)
+    #expect(env.activationRequests.isEmpty)
+    #expect(env.microphoneRequests == 0)
+
+    env.controller.shutdown()
+    activity.emit(to: onBlock)
+    try await Task.sleep(for: .milliseconds(80))
+    #expect(env.controller.status == "Paused")
+    #expect(!env.controller.capturing)
+    #expect(!env.controller.transcribing)
+    #expect(env.controller.pendingCount == 0)
+    #expect(env.controller.lastTranscript.isEmpty)
+    #expect(env.controller.lastError == nil)
+    #expect(env.keyboard.startedOutputs == 0)
+    #expect(env.activationRequests.isEmpty)
+}
+
+@Test func layoutHeldTranscriberCancelsWithoutReturningText() async throws {
+    let task = Task {
+        try await SettingsLayoutHeldTranscriber().transcribe([0.05], configuration: Configuration())
+    }
+    await Task.yield()
+    task.cancel()
+    do {
+        _ = try await task.value
+        Issue.record("Fixture transcription must not return text.")
+    } catch is CancellationError {
+    }
+}
+#endif
 
 @Test @MainActor func settingsHeaderReportsFixedAndToneTestDestinations() throws {
     let fixed = try TestEnvironment(fixedTarget: true)
