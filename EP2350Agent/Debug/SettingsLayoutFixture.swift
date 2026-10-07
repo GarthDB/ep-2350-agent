@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import AVFoundation
 import SwiftUI
 import EP2350Core
 
@@ -8,21 +9,27 @@ import EP2350Core
 @objc(SettingsLayoutFixture)
 final class SettingsLayoutFixture: NSObject {
     private static var fixture: SettingsLayoutFixture?
+    private static var localizationURL: URL?
+    private static var createdLocalizationDirectory = false
+    private static var runtimeCopyExpansionEnabled = false
     private let directory: URL
     private let audio = FixtureAudio()
     private let controller: AgentController
     private let host: SettingsWindowController
     private let inputs: FixtureInputs
+    private let permissions: FixturePermissions
+    private let initialDraft: Configuration?
 
-    private init(expanded: Bool) throws {
+    private init(expanded: Bool, scenario: String) throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("EP2350-layout-\(UUID().uuidString)")
         let store = ConfigurationStore(url: directory.appendingPathComponent("settings.json"))
         var configuration = Configuration()
-        configuration.deviceUID = "layout-fixture"
-        configuration.outputMode = .fixedTarget
+        configuration.deviceUID = scenario == "device-unavailable" ? "missing-fixture-device" : "layout-fixture"
+        configuration.macWhisperPath = "/usr/bin/true"
+        configuration.outputMode = scenario == "foreground" || scenario == "no-destination" ? .foreground : .fixedTarget
         let identity = "org.example." + String(repeating: "expanded-destination-identity.", count: 6) + "editor"
-        configuration.targetApplication = TargetApplication(
+        configuration.targetApplication = scenario == "no-destination" ? nil : TargetApplication(
             bundleID: identity,
             name: String(repeating: "Expanded Destination Application Name ", count: 6)
         )
@@ -32,10 +39,26 @@ final class SettingsLayoutFixture: NSObject {
                 repeating: "Expanded report-only custom text; never deliver this text. ", count: 3
             ))
         }
-        try store.save(configuration)
+        if scenario == "unallowed" {
+            var stagedConfiguration = configuration
+            stagedConfiguration.allowedBundleIDs = ["org.example.allowed.editor"]
+            initialDraft = stagedConfiguration
+        } else {
+            initialDraft = nil
+        }
+        if scenario == "repair" {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("invalid fixture settings".utf8).write(to: store.url)
+        } else {
+            try store.save(configuration)
+        }
         inputs = FixtureInputs()
+        inputs.fail = scenario == "input-error"
+        inputs.unavailable = scenario == "device-unavailable"
+        permissions = FixturePermissions(scenario: scenario)
         let audio = self.audio
         let inputs = self.inputs
+        let permissions = self.permissions
         controller = AgentController(
             store: store, audio: audio, transcriber: FixtureTranscriber(),
             keyboard: FixtureKeyboard(),
@@ -43,16 +66,32 @@ final class SettingsLayoutFixture: NSObject {
                 running: { _ in [] }, isRunning: { _ in false }, frontmost: { nil },
                 requestActivation: { _ in false }
             ),
-            frontmost: { nil }, accessibility: { false },
-            microphoneStatusProvider: { .authorized },
+            frontmost: { nil }, accessibility: { permissions.accessibilityGranted },
+            microphoneStatusProvider: { permissions.microphoneStatus },
             microphoneAccessRequester: { false },
             deviceInputs: { try inputs.devices() },
             observeWorkspace: false
         )
+        controller.refreshDevices()
+        switch scenario {
+        case "listening", "tone-normal-listening":
+            controller.startCapture()
+        case "tone-active":
+            controller.setToneTestMode(true)
+            controller.startCapture()
+        case "tone-paused":
+            controller.setToneTestMode(true)
+        default:
+            break
+        }
         host = SettingsWindowController(controller: controller)
         super.init()
         if expanded, let window = host.window {
-            let content = NSHostingView(rootView: SettingsView(controller: controller)
+            let content = NSHostingView(rootView: SettingsView(
+                controller: controller,
+                initialTab: Self.initialTab(for: scenario),
+                initialDraft: initialDraft
+            )
                 .environment(\.font, .system(size: 22))
                 .environment(\.dynamicTypeSize, .accessibility3))
             content.sizingOptions = [.minSize]
@@ -61,16 +100,61 @@ final class SettingsLayoutFixture: NSObject {
     }
 
     @objc static func presentExpanded(_ expanded: Bool) -> String {
+        present(expanded: expanded, scenario: "default")
+    }
+
+    @objc static func presentScenario(_ scenario: String) -> String {
+        present(expanded: true, scenario: scenario)
+    }
+
+    static func launchFromArguments() -> String? {
+        guard fixture == nil else { return nil }
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0 == "--settings-layout-fixture" || $0.hasPrefix("--settings-layout-fixture=")
+        }) else { return nil }
+        let scenario = argument.split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init) ?? "default"
+        return present(expanded: true, scenario: scenario)
+    }
+
+    private static func present(expanded: Bool, scenario: String) -> String {
         close()
         do {
-            let fixture = try SettingsLayoutFixture(expanded: expanded)
+            if expanded { try installInterpolationTable() }
+            runtimeCopyExpansionEnabled = expanded
+            let fixture = try SettingsLayoutFixture(expanded: expanded, scenario: scenario)
             self.fixture = fixture
             fixture.host.present()
-            fixture.host.window?.setContentSize(NSSize(width: 640, height: 480))
+            let size = scenario == "tone-history" || scenario == "unallowed" || scenario == "no-destination"
+                ? NSSize(width: 1000, height: 800)
+                : NSSize(width: 640, height: 480)
+            fixture.host.window?.setContentSize(size)
+            if scenario == "tone-history" { accumulateHistory() }
             return "Isolated fixture window \(fixture.host.window?.windowNumber ?? -1); \(fixture.directory.path)"
         } catch {
+            removeInterpolationTableIfOwned()
             return "Fixture failed: \(error.localizedDescription)"
         }
+    }
+
+    private static func initialTab(for scenario: String) -> SettingsTab {
+        switch scenario {
+        case "tone-active", "tone-paused", "tone-history", "tone-normal-listening", "tone-normal-paused", "device-unavailable": .toneTest
+        case "actions", "listening", "foreground": .actions
+        case "unallowed", "no-destination": .output
+        case "mic-not-determined", "mic-denied", "mic-restricted", "accessibility-granted": .safety
+        case "repair", "input-error": .audio
+        default: .audio
+        }
+    }
+
+    static func expandRuntimeCopy(_ value: String) -> String {
+        guard runtimeCopyExpansionEnabled else { return value }
+        let expanded = value.map { character -> String in
+            "aeiouAEIOU".contains(character)
+                ? String(repeating: String(character), count: 2)
+                : String(character)
+        }.joined()
+        return "⟦\(expanded)⟧"
     }
 
     @objc static func showError(_ visible: Bool) {
@@ -88,9 +172,16 @@ final class SettingsLayoutFixture: NSObject {
         let controller = fixture.controller
         let audio = fixture.audio
         Task { @MainActor in
-            for index in 0..<28 {
-                audio.tone(slot: index % 8 + 1)
-                try await Task.sleep(for: .milliseconds(40))
+            do {
+                for index in 0..<28 {
+                    audio.tone(slot: index % 8 + 1)
+                    try await Task.sleep(for: .milliseconds(40))
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                print("Layout fixture history generation failed: \(error.localizedDescription)")
+                return
             }
             controller.pause()
             print("Layout fixture: \(controller.toneTestEvents.count) report-only detections; paused.")
@@ -102,21 +193,124 @@ final class SettingsLayoutFixture: NSObject {
     }
 
     @objc static func close() {
-        guard let fixture else { return }
-        fixture.controller.shutdown()
-        fixture.host.window?.close()
-        do {
-            try FileManager.default.removeItem(at: fixture.directory)
-        } catch {
-            print("Layout fixture cleanup failed: \(error.localizedDescription)")
+        if let fixture {
+            fixture.controller.shutdown()
+            fixture.host.window?.close()
+            do {
+                try FileManager.default.removeItem(at: fixture.directory)
+            } catch {
+                print("Layout fixture cleanup failed: \(error.localizedDescription)")
+            }
+            self.fixture = nil
         }
-        self.fixture = nil
+        runtimeCopyExpansionEnabled = false
+        removeInterpolationTableIfOwned()
+    }
+
+    private static func installInterpolationTable() throws {
+        guard let resources = Bundle.main.resourceURL else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        let localizationDirectory = resources.appendingPathComponent("en.lproj", isDirectory: true)
+        let tableURL = localizationDirectory.appendingPathComponent("Localizable.strings")
+        let tableData = try interpolationTableData()
+        if FileManager.default.fileExists(atPath: tableURL.path) {
+            guard try isFixtureInterpolationTable(at: tableURL) else {
+                throw CocoaError(.fileWriteFileExists)
+            }
+            localizationURL = tableURL
+            return
+        }
+        let directoryExisted = FileManager.default.fileExists(atPath: localizationDirectory.path)
+        try FileManager.default.createDirectory(at: localizationDirectory, withIntermediateDirectories: true)
+        createdLocalizationDirectory = !directoryExisted
+        do {
+            try tableData.write(to: tableURL, options: .atomic)
+            localizationURL = tableURL
+        } catch {
+            removeInterpolationTableIfOwned()
+            throw error
+        }
+    }
+
+    private static func removeInterpolationTableIfOwned() {
+        guard let resources = Bundle.main.resourceURL else { return }
+        let tableURL = localizationURL
+            ?? resources.appendingPathComponent("en.lproj/Localizable.strings")
+        guard FileManager.default.fileExists(atPath: tableURL.path) else { return }
+        do {
+            guard try isFixtureInterpolationTable(at: tableURL) else {
+                print("Layout fixture left changed localization resource untouched: \(tableURL.path)")
+                return
+            }
+            try FileManager.default.removeItem(at: tableURL)
+            if createdLocalizationDirectory,
+               (try FileManager.default.contentsOfDirectory(atPath: tableURL.deletingLastPathComponent().path)).isEmpty {
+                try FileManager.default.removeItem(at: tableURL.deletingLastPathComponent())
+            }
+            self.localizationURL = nil
+            createdLocalizationDirectory = false
+        } catch {
+            print("Layout fixture localization cleanup failed: \(error.localizedDescription)")
+        }
+    }
+
+    private static func isFixtureInterpolationTable(at url: URL) throws -> Bool {
+        let contents = try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: url), options: [], format: nil
+        ) as? [String: String]
+        return contents == interpolationTranslations()
+    }
+
+    private static func interpolationTableData() throws -> Data {
+        try PropertyListSerialization.data(
+            fromPropertyList: interpolationTranslations(), format: .binary, options: 0
+        )
+    }
+
+    private static func interpolationTranslations() -> [String: String] {
+        var translations: [String: String] = [:]
+        translations["__EP2350_SettingsLayoutFixture"] = "Owned temporary runtime-copy expansion table."
+        translations["Global slot %lld | %lld Hz"] = "⟦Global position %1$lld | matched detector frequency %2$lld hertz — expanded format⟧"
+        translations["Global slot %ld | %ld Hz"] = "⟦Global position %1$ld | matched detector frequency %2$ld hertz — expanded format⟧"
+        translations["Global slot %@ | %@ Hz"] = "⟦Global position %1$@ | matched detector frequency %2$@ hertz — expanded format⟧"
+        translations["Global slot %lld, %lld Hz"] = "⟦Global position %1$lld, matched detector frequency %2$lld hertz — expanded format⟧"
+        translations["Global slot %ld, %ld Hz"] = "⟦Global position %1$ld, matched detector frequency %2$ld hertz — expanded format⟧"
+        translations["Global slot %@, %@ Hz"] = "⟦Global position %1$@, matched detector frequency %2$@ hertz — expanded format⟧"
+        translations["Action %lld"] = "⟦Keyboard action for sample %lld — expanded format⟧"
+        translations["Action %ld"] = "⟦Keyboard action for sample %ld — expanded format⟧"
+        translations["Action %@"] = "⟦Keyboard action for sample %@ — expanded format⟧"
+        translations["Text for action %lld"] = "⟦Custom text for sample %lld — expanded format⟧"
+        translations["Text for action %ld"] = "⟦Custom text for sample %ld — expanded format⟧"
+        translations["Text for action %@"] = "⟦Custom text for sample %@ — expanded format⟧"
+        translations["Allow %@"] = "⟦Add output destination %@ to the allowed list — expanded format⟧"
+        translations["Most recent %lld detections, newest first. Results stay only in memory."] = "⟦Latest %lld report-only detections, newest first; they remain only in memory — expanded format⟧"
+        translations["Exit Tone Test"] = "⟦Exit this report-only tone test — expanded copy⟧"
+        translations["Clear Results"] = "⟦Clear report-only results — expanded copy⟧"
+        return translations
+    }
+}
+
+@MainActor
+private final class FixturePermissions {
+    let microphoneStatus: AVAuthorizationStatus
+    let accessibilityGranted: Bool
+
+    init(scenario: String) {
+        switch scenario {
+        case "mic-not-determined": microphoneStatus = .notDetermined
+        case "mic-denied": microphoneStatus = .denied
+        case "mic-restricted": microphoneStatus = .restricted
+        default: microphoneStatus = .authorized
+        }
+        accessibilityGranted = scenario == "accessibility-granted"
     }
 }
 
 @MainActor
 private final class FixtureInputs {
     var fail = false
+    var unavailable = false
     func devices() throws -> [AudioInputDevice] {
         if fail {
             throw ConfigurationError.invalid(String(
@@ -124,6 +318,7 @@ private final class FixtureInputs {
                 count: 6
             ))
         }
+        if unavailable { return [] }
         return [AudioInputDevice(
             id: "layout-fixture",
             name: String(repeating: "Expanded Synthetic Audio Input Name ", count: 4),

@@ -88,34 +88,11 @@ struct ToneTestView: View {
     }
 
     var body: some View {
-        ScrollView {
-            content
-        }
-    }
-
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(presentation.title)
-                .font(.headline)
-            Text(presentation.guidance)
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if hasUnsavedSettings {
-                Text("Save Settings first to test your edited input or mappings.")
-                    .foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                content
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Saved input")
-                Text(controller.selectedDeviceName)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let meterLabel = presentation.meterLabel {
-                ProgressView(value: controller.level)
-                    .accessibilityLabel(meterLabel)
-            } else if let idleMeterMessage = presentation.idleMeterMessage {
-                Text(idleMeterMessage)
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            .scrollIndicators(.visible)
             ToneTestControlsView(
                 startTitle: presentation.startButtonTitle,
                 isTesting: controller.toneTestMode,
@@ -124,6 +101,34 @@ struct ToneTestView: View {
                 exit: { controller.setToneTestMode(false) },
                 clear: { controller.clearToneTestEvents() }
             )
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(settingsRuntimeCopy(presentation.title))
+                .font(.headline)
+            Text(settingsRuntimeCopy(presentation.guidance))
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if hasUnsavedSettings {
+                Text("Save Settings first to test your edited input or mappings.")
+                    .foregroundStyle(.orange)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Saved input")
+                Text(settingsRuntimeCopy(controller.selectedDeviceName))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let meterLabel = presentation.meterLabel {
+                ProgressView(value: controller.level)
+                    .accessibilityLabel(settingsRuntimeCopy(meterLabel))
+            } else if let idleMeterMessage = presentation.idleMeterMessage {
+                Text(settingsRuntimeCopy(idleMeterMessage))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if controller.toneTestMode {
                 Text("Play each sample in modes A and B. Frequency is the matched detector frequency, not a separate frequency measurement.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -136,15 +141,15 @@ struct ToneTestView: View {
                     ForEach(controller.toneTestEvents) { event in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(event.summary).font(.headline)
+                                Text(settingsRuntimeCopy(event.summary)).font(.headline)
                                 Spacer()
                                 Text(event.timestamp, style: .time)
                                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                             }
-                            Text(event.details)
+                            Text("Global slot \(event.slot), \(event.frequency) Hz")
                                 .font(.caption).foregroundStyle(.secondary)
                             if event.mapping.action == .custom {
-                                Text(event.mapping.text)
+                                Text(settingsRuntimeCopy(event.mapping.text))
                                     .font(.body.monospaced()).textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -190,7 +195,7 @@ struct ToneTestControlsView: View {
 
     private var startButton: some View {
         Button(action: toggle) {
-            Text(startTitle).fixedSize(horizontal: false, vertical: true)
+            Text(settingsRuntimeCopy(startTitle)).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -212,7 +217,7 @@ struct ToneTestEmptyResultsView: View {
     let message: String
 
     var body: some View {
-        Text(message)
+        Text(settingsRuntimeCopy(message))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }

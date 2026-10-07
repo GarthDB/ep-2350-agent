@@ -187,6 +187,7 @@ import EP2350Core
     let scroll = try #require(views.first)
     let document = try #require(scroll.documentView)
     let viewport = scroll.contentView
+    #expect(scroll.hasVerticalScroller)
     #expect(host.fittingSize.height <= 220)
     #expect(scroll.frame.height <= 220)
     #expect(viewport.bounds.height > 0)
