@@ -4,6 +4,15 @@ import Combine
 import SwiftUI
 import EP2350Core
 
+@MainActor
+func settingsRuntimeCopy(_ value: String) -> String {
+#if DEBUG
+    SettingsLayoutFixture.expandRuntimeCopy(value)
+#else
+    value
+#endif
+}
+
 struct PermissionControlsPresentation: Equatable {
     enum MicrophoneAction: Equatable {
         case request, openSettings, none
@@ -94,6 +103,16 @@ struct SettingsSavePresentation: Equatable {
     }
 }
 
+enum SettingsTab: Hashable {
+    case audio
+    case toneTest
+    case macWhisper
+    case actions
+    case output
+    case safety
+    case setup
+}
+
 struct SettingsHeaderPresentation: Equatable {
     let status: String
     let destination: String
@@ -165,10 +184,10 @@ private struct ApplicationIdentityView: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(identity.name)
+                Text(settingsRuntimeCopy(identity.name))
                     .fixedSize(horizontal: false, vertical: true)
                 if identity.name != identity.bundleID {
-                    Text(identity.bundleID)
+                    Text(settingsRuntimeCopy(identity.bundleID))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -183,8 +202,16 @@ struct SettingsView: View {
     let controller: AgentController
     @State private var draft = Configuration()
     @State private var error: String?
+    @State private var selectedTab: SettingsTab
+    private let initialDraft: Configuration?
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     private let buildInfo = AppBuildInfo.current
+
+    init(controller: AgentController, initialTab: SettingsTab = .audio, initialDraft: Configuration? = nil) {
+        self.controller = controller
+        _selectedTab = State(initialValue: initialTab)
+        self.initialDraft = initialDraft
+    }
 
     var presentation: SettingsSavePresentation {
         SettingsSavePresentation(
@@ -217,36 +244,49 @@ struct SettingsView: View {
                     .font(.title2.bold())
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(headerPresentation.status)
+                    Text(settingsRuntimeCopy(headerPresentation.status))
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Current listening status: \(headerPresentation.status)")
-                    Text(headerPresentation.destination)
+                        .accessibilityLabel(settingsRuntimeCopy("Current listening status: \(headerPresentation.status)"))
+                    Text(settingsRuntimeCopy(headerPresentation.destination))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.trailing)
-                        .accessibilityLabel("Active output destination: \(headerPresentation.destination)")
-                    Button(headerPresentation.buttonTitle) { controller.toggle() }
-                        .accessibilityLabel(headerPresentation.buttonAccessibilityLabel)
+                        .accessibilityLabel(settingsRuntimeCopy("Active output destination: \(headerPresentation.destination)"))
+                    Button(settingsRuntimeCopy(headerPresentation.buttonTitle)) { controller.toggle() }
+                        .accessibilityLabel(settingsRuntimeCopy(headerPresentation.buttonAccessibilityLabel))
                 }
             }
-            TabView {
-                audioTab.tabItem { Label("Audio", systemImage: "waveform") }
+            TabView(selection: $selectedTab) {
+                audioTab
+                    .tabItem { Label("Audio", systemImage: "waveform") }
+                    .tag(SettingsTab.audio)
                 ToneTestView(controller: controller, hasUnsavedSettings: draft != controller.configuration)
                     .tabItem { Label("Tone Test", systemImage: "waveform.badge.magnifyingglass") }
-                transcriptionTab.tabItem { Label("MacWhisper", systemImage: "text.bubble") }
-                actionsTab.tabItem { Label("Actions", systemImage: "button.programmable") }
-                outputTab.tabItem { Label("Output", systemImage: "scope") }
-                safetyTab.tabItem { Label("Safety", systemImage: "lock") }
-                setupTab.tabItem { Label("Setup", systemImage: "cable.connector") }
+                    .tag(SettingsTab.toneTest)
+                transcriptionTab
+                    .tabItem { Label("MacWhisper", systemImage: "text.bubble") }
+                    .tag(SettingsTab.macWhisper)
+                actionsTab
+                    .tabItem { Label("Actions", systemImage: "button.programmable") }
+                    .tag(SettingsTab.actions)
+                outputTab
+                    .tabItem { Label("Output", systemImage: "scope") }
+                    .tag(SettingsTab.output)
+                safetyTab
+                    .tabItem { Label("Safety", systemImage: "lock") }
+                    .tag(SettingsTab.safety)
+                setupTab
+                    .tabItem { Label("Setup", systemImage: "cable.connector") }
+                    .tag(SettingsTab.setup)
             }
             if let message = error ?? controller.lastError {
                 SettingsErrorView(message: message)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(presentation.changeTimingMessage)
-                    Text(presentation.message)
-                    Text(buildInfo.label)
+                    Text(settingsRuntimeCopy(presentation.changeTimingMessage))
+                    Text(settingsRuntimeCopy(presentation.message))
+                    Text(settingsRuntimeCopy(buildInfo.label))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -272,7 +312,7 @@ struct SettingsView: View {
         .onAppear {
             controller.refreshDevices()
             controller.refreshPermissions()
-            draft = controller.configuration
+            draft = initialDraft ?? controller.configuration
             error = nil
         }
         .onReceive(refresh) { _ in
@@ -291,7 +331,9 @@ struct SettingsView: View {
                 if let uid = draft.deviceUID, !controller.devices.contains(where: { $0.id == uid }) {
                     Text("Selected input unavailable").tag(uid)
                 }
-                ForEach(controller.devices) { device in Text(device.name).tag(device.id) }
+                ForEach(controller.devices) { device in
+                    Text(settingsRuntimeCopy(device.name)).tag(device.id)
+                }
             }
             ProgressView(value: controller.level)
                 .accessibilityLabel("Input level")
@@ -336,21 +378,21 @@ struct SettingsView: View {
                 ForEach(0..<8, id: \.self) { index in
                     let sample = PhysicalSample(globalSlot: index + 1)
                     if index == 0 || index == 4 {
-                        Text(index == 0 ? "Mode A - no mode LED" : "Mode B - first mode LED")
+                        Text(settingsRuntimeCopy(index == 0 ? "Mode A - no mode LED" : "Mode B - first mode LED"))
                             .font(.headline).padding(.top, 8)
                     }
                     HStack {
-                        Text(sample.label)
+                        Text(settingsRuntimeCopy(sample.label))
                         Text("Global slot \(index + 1) | \(Int(AudioConstants.frequencies[index])) Hz")
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         Spacer()
                         Picker("Action \(index + 1)", selection: $draft.slots[index].action) {
                             ForEach(ButtonAction.allCases, id: \.self) { action in
-                                Text(action.label).tag(action)
+                                Text(settingsRuntimeCopy(action.label)).tag(action)
                             }
                         }
                         .labelsHidden()
-                        .accessibilityLabel(sample.accessibilityLabel)
+                        .accessibilityLabel(settingsRuntimeCopy(sample.accessibilityLabel))
                         .frame(width: 230)
                     }
                     if draft.slots[index].action == .custom {
@@ -364,10 +406,10 @@ struct SettingsView: View {
 
     private var safetyTab: some View {
         Form {
-            LabeledContent("Microphone", value: permissionControls.microphoneStatus)
-            LabeledContent("Accessibility", value: permissionControls.accessibilityStatus)
+            LabeledContent("Microphone", value: settingsRuntimeCopy(permissionControls.microphoneStatus))
+            LabeledContent("Accessibility", value: settingsRuntimeCopy(permissionControls.accessibilityStatus))
             HStack {
-                Button(permissionControls.microphoneButtonTitle) {
+                Button(settingsRuntimeCopy(permissionControls.microphoneButtonTitle)) {
                     switch permissionControls.microphoneAction {
                     case .request:
                         controller.requestMicrophonePermission()
@@ -378,7 +420,7 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(permissionControls.microphoneAction == .none)
-                Button(permissionControls.accessibilityButtonTitle) {
+                Button(settingsRuntimeCopy(permissionControls.accessibilityButtonTitle)) {
                     switch permissionControls.accessibilityAction {
                     case .request:
                         ActionRouter.requestAccessibility()
@@ -394,7 +436,7 @@ struct SettingsView: View {
                     ApplicationIdentityView(identity: identity)
                     Spacer()
                     Button("Remove") { draft.allowedBundleIDs.removeAll { $0 == bundleID } }
-                        .accessibilityLabel(identity.removalAccessibilityLabel)
+                        .accessibilityLabel(settingsRuntimeCopy(identity.removalAccessibilityLabel))
                 }
             }
             Button("Add Application...") {
@@ -436,7 +478,7 @@ struct SettingsView: View {
         Form {
             Picker("Output mode", selection: $draft.outputMode) {
                 ForEach(OutputMode.allCases, id: \.self) { mode in
-                    Text(mode.label).tag(mode)
+                    Text(settingsRuntimeCopy(mode.label)).tag(mode)
                 }
             }
             if draft.outputMode == .fixedTarget {
@@ -446,9 +488,15 @@ struct SettingsView: View {
                         ApplicationIdentityView(identity: identity)
                     }
                     if !draft.allowedBundleIDs.isEmpty && !draft.allowedBundleIDs.contains(target.bundleID) {
-                        Text("This target is not in Allowed apps. Add it before saving.")
+                        Text(settingsRuntimeCopy("This target is not in Allowed apps. Add it before saving."))
                             .foregroundStyle(.red)
-                        Button("Allow \(identity.name)") { draft.allowedBundleIDs.append(target.bundleID) }
+                        Button {
+                            draft.allowedBundleIDs.append(target.bundleID)
+                        } label: {
+                            Text("Allow \(identity.name)")
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 } else {
                     Text("Choose the app that should receive all transcripts and keyboard actions.")
@@ -514,10 +562,10 @@ struct SettingsErrorView: View {
     let message: String
 
     private var messageText: some View {
-        Text(message)
+        Text(settingsRuntimeCopy(message))
             .foregroundStyle(.red)
             .textSelection(.enabled)
-            .accessibilityLabel("Error: \(message)")
+            .accessibilityLabel(settingsRuntimeCopy("Error: \(message)"))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

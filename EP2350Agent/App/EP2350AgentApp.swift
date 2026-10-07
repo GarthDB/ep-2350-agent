@@ -14,8 +14,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.present()
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+#if DEBUG
+        if let fixtureMessage = SettingsLayoutFixture.launchFromArguments() {
+            print(fixtureMessage)
+        }
+#endif
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func applicationWillTerminate(_ notification: Notification) { controller?.shutdown() }
+    func applicationWillTerminate(_ notification: Notification) {
+        controller?.shutdown()
+#if DEBUG
+        SettingsLayoutFixture.close()
+#endif
+    }
 }
 
 @main
@@ -30,6 +43,13 @@ struct EP2350AgentApp: App {
         } label: {
             Image(systemName: controller.capturing ? "mic.fill" : (controller.enabled ? "mic" : "mic.slash"))
                 .accessibilityLabel("EP-2350 Agent: \(controller.status)")
+                .onAppear {
+#if DEBUG
+                    if let fixtureMessage = SettingsLayoutFixture.launchFromArguments() {
+                        print(fixtureMessage)
+                    }
+#endif
+                }
         }
         .commands {
             CommandGroup(replacing: .appSettings) {
