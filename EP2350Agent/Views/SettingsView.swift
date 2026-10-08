@@ -242,6 +242,7 @@ struct SettingsView: View {
             HStack {
                 Label("EP-2350 Agent", systemImage: "mic")
                     .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(settingsRuntimeCopy(headerPresentation.status))
@@ -337,6 +338,7 @@ struct SettingsView: View {
             }
             ProgressView(value: controller.level)
                 .accessibilityLabel("Input level")
+                .accessibilityValue(inputLevelAccessibilityValue(controller.level))
             Text("The level meter runs while listening. Connect the microphone's analog line-out to a USB audio adapter; the app processes audio, not USB button events.")
                 .foregroundStyle(.secondary)
             DisclosureGroup("Voice detection details") {
@@ -380,6 +382,7 @@ struct SettingsView: View {
                     if index == 0 || index == 4 {
                         Text(settingsRuntimeCopy(index == 0 ? "Mode A - no mode LED" : "Mode B - first mode LED"))
                             .font(.headline).padding(.top, 8)
+                            .accessibilityAddTraits(.isHeader)
                     }
                     HStack {
                         Text(settingsRuntimeCopy(sample.label))
@@ -536,7 +539,9 @@ struct SettingsView: View {
     private var setupTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("EP-2350 tone configuration").font(.headline)
+                Text("EP-2350 tone configuration")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Button("Show EP-2350 Tone Files") {
                     if let url = Bundle.main.url(forResource: "TingConfig", withExtension: nil) {
                         NSWorkspace.shared.activateFileViewerSelecting([url])

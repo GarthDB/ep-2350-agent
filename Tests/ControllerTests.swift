@@ -18,6 +18,11 @@ import EP2350Core
     func stop() { stops += 1 }
 }
 
+@MainActor private final class FakeAnnouncementPoster: AccessibilityAnnouncementPosting {
+    var announcements: [RuntimeAnnouncement] = []
+    func post(_ announcement: RuntimeAnnouncement) { announcements.append(announcement) }
+}
+
 private actor FakeTranscriber: Transcribing {
     let delay: Duration
     private(set) var calls = 0
@@ -57,6 +62,7 @@ private actor FakeTranscriber: Transcribing {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let audio = FakeAudio()
     let keyboard = FakeKeyboard()
+    let announcementPoster = FakeAnnouncementPoster()
     let transcriber: FakeTranscriber
     var current: AppIdentity? = AppIdentity(processID: 12, bundleID: "com.apple.Terminal")
     var permission = true
@@ -116,7 +122,8 @@ private actor FakeTranscriber: Transcribing {
                 self.microphoneAuthorizationStatus = self.microphoneRequestSucceeds ? .authorized : .denied
                 return self.microphoneRequestSucceeds
             },
-            deviceInputs: { [unowned self] in self.connected ? [self.device] : [] }, observeWorkspace: false
+            deviceInputs: { [unowned self] in self.connected ? [self.device] : [] },
+            announcementPoster: announcementPoster, observeWorkspace: false
         )
         controller.refreshDevices()
         controller.setToneTestMode(toneTestMode)
@@ -226,6 +233,25 @@ private actor FakeTranscriber: Transcribing {
     #expect(env.controller.lastError?.contains("Microphone access was not granted") == true)
     #expect(!env.controller.enabled)
     #expect(env.audio.starts == 0)
+    #expect(env.keyboard.startedOutputs == 0)
+    #expect(env.announcementPoster.announcements == [.microphonePermissionDenied])
+}
+
+@Test @MainActor func toneTestAnnouncementIsFixedAndDetectionsRemainReportOnly() async throws {
+    let env = try TestEnvironment(
+        toneTestMode: true, macWhisperPath: "/missing-macwhisper"
+    )
+    defer { env.cleanup() }
+    var edited = env.controller.configuration
+    edited.slots[0] = SlotMapping(.custom, text: "private custom macro")
+    try env.controller.save(edited)
+    env.controller.startCapture()
+
+    env.tone(slot: 1, blocks: 3)
+    try await waitUntil { !env.controller.toneTestEvents.isEmpty }
+    #expect(env.announcementPoster.announcements == [.toneTestStarted])
+    #expect(env.controller.toneTestEvents[0].mapping.text == "private custom macro")
+    #expect(env.announcementPoster.announcements.map(\.message).allSatisfy { !$0.contains("private custom macro") })
     #expect(env.keyboard.startedOutputs == 0)
 }
 
@@ -345,6 +371,27 @@ private actor FakeTranscriber: Transcribing {
     #expect(header.destination == "Output: Foreground app")
 }
 
+@Test func inputLevelAccessibilityValueIsReadableAndBounded() {
+    #expect(inputLevelAccessibilityValue(0.375) == "38 percent")
+    #expect(inputLevelAccessibilityValue(1.5) == "100 percent")
+    #expect(inputLevelAccessibilityValue(-0.5) == "0 percent")
+    #expect(inputLevelAccessibilityValue(.nan) == "0 percent")
+}
+
+@Test func runtimeAnnouncementGateBoundsRepeatedAnnouncementsPerKind() {
+    var gate = RuntimeAnnouncementGate()
+
+    let first = gate.shouldPost(.outputBlocked, at: 10)
+    let withinCooldown = gate.shouldPost(.outputBlocked, at: 11.9)
+    let afterCooldown = gate.shouldPost(.outputBlocked, at: 12)
+    let differentAnnouncement = gate.shouldPost(.accessibilityPermissionDenied, at: 12)
+
+    #expect(first)
+    #expect(!withinCooldown)
+    #expect(afterCooldown)
+    #expect(differentAnnouncement)
+}
+
 #if DEBUG
 @Test(arguments: SettingsLayoutActivity.allCases)
 @MainActor func layoutActivityProducesStableStatusWithoutOutput(_ activity: SettingsLayoutActivity) async throws {
@@ -460,6 +507,8 @@ private actor FakeTranscriber: Transcribing {
     try await Task.sleep(for: .milliseconds(150))
     #expect(env.keyboard.texts == ["hello\nworld"])
     #expect(env.keyboard.mappings.isEmpty)
+    #expect(env.announcementPoster.announcements == [.transcriptInserted])
+    #expect(env.announcementPoster.announcements.map(\.message).allSatisfy { !$0.contains("hello") })
 }
 
 @Test @MainActor func focusChangesAwayAndBackBlockDelivery() async throws {
@@ -473,6 +522,21 @@ private actor FakeTranscriber: Transcribing {
     #expect(env.keyboard.texts.isEmpty)
     #expect(env.controller.lastTranscript == "hello\nworld")
     #expect(env.controller.notice?.contains("not inserted") == true)
+    #expect(env.announcementPoster.announcements == [.outputBlocked])
+}
+
+@Test @MainActor func accessibilityOutputDenialIsAnnouncedWithoutTranscriptContent() async throws {
+    let env = try TestEnvironment()
+    defer { env.cleanup() }
+    env.permission = false
+
+    env.utterance()
+    try await waitUntil { env.controller.lastTranscript == "hello\nworld" }
+    try await Task.sleep(for: .milliseconds(20))
+
+    #expect(env.keyboard.texts.isEmpty)
+    #expect(env.announcementPoster.announcements == [.accessibilityPermissionDenied])
+    #expect(env.announcementPoster.announcements.map(\.message).allSatisfy { !$0.contains("hello") })
 }
 
 @Test @MainActor func pauseCancelsPendingOutput() async throws {
