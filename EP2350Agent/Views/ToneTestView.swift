@@ -1,6 +1,11 @@
 import SwiftUI
 import EP2350Core
 
+func inputLevelAccessibilityValue(_ level: Double) -> String {
+    let boundedLevel = level.isFinite ? min(max(level, 0), 1) : 0
+    return "\(Int((boundedLevel * 100).rounded())) percent"
+}
+
 struct ToneTestPresentation: Equatable {
     enum State: Equatable {
         case normalListening
@@ -110,6 +115,7 @@ struct ToneTestView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(settingsRuntimeCopy(presentation.title))
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             Text(settingsRuntimeCopy(presentation.guidance))
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -125,6 +131,7 @@ struct ToneTestView: View {
             if let meterLabel = presentation.meterLabel {
                 ProgressView(value: controller.level)
                     .accessibilityLabel(settingsRuntimeCopy(meterLabel))
+                    .accessibilityValue(inputLevelAccessibilityValue(controller.level))
             } else if let idleMeterMessage = presentation.idleMeterMessage {
                 Text(settingsRuntimeCopy(idleMeterMessage))
                     .font(.caption).foregroundStyle(.secondary)
@@ -141,19 +148,25 @@ struct ToneTestView: View {
                     ForEach(controller.toneTestEvents) { event in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(settingsRuntimeCopy(event.summary)).font(.headline)
+                                Text(settingsRuntimeCopy(event.summary))
+                                    .font(.headline)
+                                    .accessibilityLabel(settingsRuntimeCopy("Detected sample \(event.sampleLabel), mapped action \(event.mapping.action.label)"))
                                 Spacer()
                                 Text(event.timestamp, style: .time)
                                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                    .accessibilityLabel(settingsRuntimeCopy("Detected at \(event.timestamp.formatted(date: .omitted, time: .shortened))"))
                             }
                             Text("Global slot \(event.slot), \(event.frequency) Hz")
                                 .font(.caption).foregroundStyle(.secondary)
+                                .accessibilityLabel(settingsRuntimeCopy("Global slot \(event.slot), matched detector frequency \(event.frequency) hertz"))
                             if event.mapping.action == .custom {
                                 Text(settingsRuntimeCopy(event.mapping.text))
                                     .font(.body.monospaced()).textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityLabel(settingsRuntimeCopy("Custom action text: \(event.mapping.text)"))
                             }
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }

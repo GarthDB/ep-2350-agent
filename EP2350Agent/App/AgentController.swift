@@ -27,6 +27,61 @@ private final class FocusSnapshot: @unchecked Sendable {
     }
 }
 
+enum RuntimeAnnouncement: CaseIterable, Hashable {
+    case toneTestStarted
+    case microphonePermissionDenied
+    case accessibilityPermissionDenied
+    case outputBlocked
+    case transcriptInserted
+
+    var message: String {
+        switch self {
+        case .toneTestStarted:
+            "Tone Test started. Results are report-only; no actions or transcription will occur."
+        case .microphonePermissionDenied:
+            "Microphone permission was not granted."
+        case .accessibilityPermissionDenied:
+            "Accessibility permission is required to send keyboard output."
+        case .outputBlocked:
+            "Output was blocked because the target app, focus, or permissions changed."
+        case .transcriptInserted:
+            "Transcript inserted."
+        }
+    }
+}
+
+@MainActor
+protocol AccessibilityAnnouncementPosting {
+    func post(_ announcement: RuntimeAnnouncement)
+}
+
+@MainActor
+struct AppKitAccessibilityAnnouncementPoster: AccessibilityAnnouncementPosting {
+    func post(_ announcement: RuntimeAnnouncement) {
+        NSAccessibility.post(
+            element: NSApplication.shared,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: announcement.message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue
+            ]
+        )
+    }
+}
+
+struct RuntimeAnnouncementGate {
+    static let cooldown: TimeInterval = 2
+    private var lastPosted: [RuntimeAnnouncement: TimeInterval] = [:]
+
+    mutating func shouldPost(_ announcement: RuntimeAnnouncement, at time: TimeInterval) -> Bool {
+        if let previous = lastPosted[announcement], time >= previous, time - previous < Self.cooldown {
+            return false
+        }
+        lastPosted[announcement] = time
+        return true
+    }
+}
+
 @MainActor
 @Observable
 final class AgentController {
@@ -58,6 +113,8 @@ final class AgentController {
     @ObservationIgnored private let microphoneStatusProvider: @MainActor () -> AVAuthorizationStatus
     @ObservationIgnored private let microphoneAccessRequester: @MainActor () async -> Bool
     @ObservationIgnored private let deviceInputs: @MainActor () throws -> [AudioInputDevice]
+    @ObservationIgnored private let announcementPoster: any AccessibilityAnnouncementPosting
+    @ObservationIgnored private var announcementGate = RuntimeAnnouncementGate()
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var focusRevision: UInt64 = 0
     @ObservationIgnored private var utteranceTicket: DeliveryTicket?
@@ -99,6 +156,7 @@ final class AgentController {
             await AVCaptureDevice.requestAccess(for: .audio)
         },
         deviceInputs: @escaping @MainActor () throws -> [AudioInputDevice] = { try AudioDeviceService.inputs() },
+        announcementPoster: any AccessibilityAnnouncementPosting = AppKitAccessibilityAnnouncementPoster(),
         observeWorkspace: Bool = true
     ) {
         self.store = store
@@ -111,6 +169,7 @@ final class AgentController {
         self.microphoneStatusProvider = microphoneStatusProvider
         self.microphoneAccessRequester = microphoneAccessRequester
         self.deviceInputs = deviceInputs
+        self.announcementPoster = announcementPoster
         do { configuration = try store.load() }
         catch {
             configuration = Configuration()
@@ -170,6 +229,7 @@ final class AgentController {
         accessibilityGranted = accessibility()
         if enabled && microphoneStatus != .authorized {
             failCapture("Microphone permission was revoked. Enable it in System Settings.")
+            announce(.microphonePermissionDenied)
         }
     }
 
@@ -217,6 +277,7 @@ final class AgentController {
             self.permissionTask = nil
             guard authorized else {
                 self.lastError = Self.microphonePermissionError
+                self.announce(.microphonePermissionDenied)
                 return
             }
             self.refreshDevices()
@@ -238,6 +299,7 @@ final class AgentController {
                 self.notice = "Microphone access granted. Resume listening when ready."
             } else {
                 self.lastError = Self.microphonePermissionError
+                self.announce(.microphonePermissionDenied)
             }
         }
     }
@@ -308,6 +370,9 @@ final class AgentController {
                     }
                 }
             })
+            if toneTestMode {
+                announce(.toneTestStarted)
+            }
         } catch {
             failCapture(error.localizedDescription)
         }
@@ -347,6 +412,24 @@ final class AgentController {
     private func failCapture(_ message: String) {
         pause()
         lastError = message
+    }
+
+    private func announceOutputError(_ error: Error) {
+        guard let error = error as? OutputError else { return }
+        switch error {
+        case .permission:
+            announce(.accessibilityPermissionDenied)
+        case .blocked:
+            announce(.outputBlocked)
+        case .event, .busy:
+            break
+        }
+    }
+
+    private func announce(_ announcement: RuntimeAnnouncement) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard announcementGate.shouldPost(announcement, at: now) else { return }
+        announcementPoster.post(announcement)
     }
 
     private var exclusions: Set<String> {
@@ -439,6 +522,7 @@ final class AgentController {
                             return
                         } catch {
                             guard self.generation == session else { return }
+                            self.announceOutputError(error)
                             self.lastError = error.localizedDescription
                         }
                         guard self.generation == session else { return }
@@ -480,10 +564,12 @@ final class AgentController {
                     try await self.send(.transcript(text), ticket: request.ticket, session: session)
                     guard !Task.isCancelled, session == self.generation else { return }
                     self.notice = "Transcript inserted. Use the microphone Enter action to submit."
+                    self.announce(.transcriptInserted)
                 } catch is CancellationError {
                     return
                 } catch {
                     guard session == self.generation else { return }
+                    self.announceOutputError(error)
                     self.lastError = error.localizedDescription
                     self.notice = "Transcript not inserted completely. Copy it manually from the menu."
                 }
